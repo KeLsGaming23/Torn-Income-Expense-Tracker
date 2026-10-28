@@ -15,10 +15,11 @@ import {
   Layers,
   ArrowRight,
   Table as TableIcon,
-  LayoutGrid
+  LayoutGrid,
+  Calculator
 } from 'lucide-react';
 
-export default function MuseumSetBuilder() {
+export default function MuseumSetBuilder({ setActiveTab }) {
   const { showToast, refresh } = useTornData();
 
   // Active Set Type
@@ -191,11 +192,23 @@ export default function MuseumSetBuilder() {
           </button>
         </div>
 
-        <div className="text-xs text-slate-400 flex items-center gap-1.5">
-          <span>Live Points Market Lowest:</span>
-          <span className="font-bold font-mono text-amber-300">
-            {formatMoney(simulation?.liveMarketPointPrice || 45000)} / pt
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-400 flex items-center gap-1.5">
+            <span>Points Market:</span>
+            <span className="font-bold font-mono text-amber-300">
+              {formatMoney(simulation?.liveMarketPointPrice || 31599)} / pt
+            </span>
+          </div>
+
+          {setActiveTab && (
+            <button
+              onClick={() => setActiveTab('calculator')}
+              className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+            >
+              <Calculator className="h-3.5 w-3.5" />
+              <span>Profit Calculator</span>
+            </button>
+          )}
         </div>
       </div>
 

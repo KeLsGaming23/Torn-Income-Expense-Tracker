@@ -5,9 +5,10 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 
-// 4 Main Views
+// 5 Main Views
 import CommandCenter from './pages/CommandCenter';
 import MuseumSetBuilder from './pages/MuseumSetBuilder';
+import ProfitCalculator from './pages/ProfitCalculator';
 import LeftoversVault from './pages/LeftoversVault';
 import ExpensesVaultTracker from './pages/ExpensesVaultTracker';
 
@@ -52,10 +53,11 @@ export default function App() {
         {/* Desktop Navigation Sidebar */}
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        {/* 4 Main Views Container */}
+        {/* Main Views Container */}
         <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
           {activeTab === 'dashboard' && <CommandCenter setActiveTab={setActiveTab} />}
-          {activeTab === 'museum' && <MuseumSetBuilder />}
+          {activeTab === 'museum' && <MuseumSetBuilder setActiveTab={setActiveTab} />}
+          {activeTab === 'calculator' && <ProfitCalculator />}
           {activeTab === 'leftovers' && <LeftoversVault />}
           {activeTab === 'expenses' && <ExpensesVaultTracker />}
         </main>

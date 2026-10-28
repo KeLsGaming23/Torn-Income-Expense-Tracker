@@ -2,6 +2,7 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   Sparkles, 
+  Calculator,
   Boxes, 
   ReceiptText,
   Flame,
@@ -22,6 +23,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       badge: readySets > 0 ? `${readySets} Sets Ready` : null,
       badgeColor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
     },
+    { id: 'calculator', label: 'Profit Calculator', icon: Calculator },
     { id: 'leftovers', label: 'FIFO Leftovers Vault', icon: Boxes },
     { id: 'expenses', label: 'Expenses & Vault', icon: ReceiptText },
   ];

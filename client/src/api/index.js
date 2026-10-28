@@ -26,6 +26,9 @@ export const convertMuseumSets = (payload) =>
 export const getConversionsHistory = () => 
   api.get('/museum/conversions').then(r => r.data);
 
+export const getLivePointsMarket = () => 
+  api.get('/market/points-live').then(r => r.data);
+
 // 4. FIFO Inventory Lots & Leftovers Vault
 export const getInventoryLots = (params) => 
   api.get('/inventory/lots', { params }).then(r => r.data);

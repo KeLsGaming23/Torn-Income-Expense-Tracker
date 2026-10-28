@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import axios from 'axios';
 import { fileURLToPath } from 'url';
 
 import pool from './config/db.js';
@@ -114,6 +115,51 @@ app.get('/api/museum/conversions', async (req, res) => {
       `SELECT * FROM point_conversions ORDER BY converted_at DESC LIMIT 100`
     );
     res.json({ success: true, conversions: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Live Points Market Listings & Metrics
+app.get('/api/market/points-live', async (req, res) => {
+  try {
+    const apiKey = process.env.TORN_API_KEY || 'vVZGrKSwrXNtcGKi';
+    let listings = [];
+    try {
+      const apiRes = await axios.get(`https://api.torn.com/market/?selections=pointsmarket&key=${apiKey}`, { timeout: 8000 });
+      listings = Object.values(apiRes.data.pointsmarket || {});
+    } catch (e) {
+      console.warn('[Market] Torn API live points fetch failed:', e.message);
+    }
+
+    if (listings.length === 0) {
+      const [snap] = await pool.query(`SELECT current_market_point_price FROM wallet_snapshots ORDER BY id DESC LIMIT 1`);
+      const fallbackPrice = Number(snap[0]?.current_market_point_price) || 31500;
+      return res.json({
+        success: true,
+        source: 'cached',
+        lowestListing: fallbackPrice,
+        averageTop10: fallbackPrice,
+        topListings: []
+      });
+    }
+
+    listings.sort((a, b) => Number(a.cost) - Number(b.cost));
+    const lowestListing = Number(listings[0]?.cost || 31500);
+    const top10 = listings.slice(0, 10);
+    const avgTop10 = Math.round(top10.reduce((acc, l) => acc + Number(l.cost), 0) / top10.length);
+
+    res.json({
+      success: true,
+      source: 'live',
+      lowestListing,
+      averageTop10: avgTop10,
+      topListings: top10.map(l => ({
+        cost: Number(l.cost),
+        quantity: Number(l.quantity),
+        totalCost: Number(l.total_cost)
+      }))
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

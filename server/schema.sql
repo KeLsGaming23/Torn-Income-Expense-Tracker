@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS `inventory_lots` (
 -- 3. Point Conversions
 CREATE TABLE IF NOT EXISTS `point_conversions` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `torn_log_id` VARCHAR(64) UNIQUE NULL,
     `set_type` ENUM('plushie', 'flower') NOT NULL,
     `sets_converted` INT NOT NULL,
     `points_generated` INT NOT NULL, -- 10 points per set

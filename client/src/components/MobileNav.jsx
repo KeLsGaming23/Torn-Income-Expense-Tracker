@@ -2,6 +2,7 @@ import React from 'react';
 import { 
   LayoutDashboard, 
   Sparkles, 
+  Calculator,
   Boxes, 
   ReceiptText 
 } from 'lucide-react';
@@ -10,6 +11,7 @@ export default function MobileNav({ activeTab, setActiveTab }) {
   const tabs = [
     { id: 'dashboard', label: 'Command', icon: LayoutDashboard },
     { id: 'museum', label: 'Museum', icon: Sparkles },
+    { id: 'calculator', label: 'Calc', icon: Calculator },
     { id: 'leftovers', label: 'Leftovers', icon: Boxes },
     { id: 'expenses', label: 'Expenses', icon: ReceiptText },
   ];

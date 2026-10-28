@@ -125,36 +125,101 @@ export class TornSyncService {
         // A. Purchases of Plushies & Flowers
         const isPurchase = title.includes('buy') || title.includes('abroad') || title.includes('bazaar') || title.includes('market');
         if (isPurchase) {
-          const itemId = Number(data.item || data.item_id || data.items?.[0]?.id);
-          const museumItem = itemId ? ALL_MUSEUM_ITEMS_MAP.get(itemId) : null;
+          const itemsList = data.items && Array.isArray(data.items) && data.items.length > 0
+            ? data.items.map(it => ({
+                id: Number(it.id),
+                qty: Number(it.qty || it.quantity || 1),
+                unitCost: Number(data.cost_each || it.cost || (data.cost_total && it.qty ? Math.round(data.cost_total / it.qty) : 0) || 0)
+              }))
+            : (data.item || data.item_id ? [{
+                id: Number(data.item || data.item_id),
+                qty: Number(data.quantity || 1),
+                unitCost: Number(data.cost_each || (data.cost_total && data.quantity ? Math.round(data.cost_total / data.quantity) : 0) || data.cost || data.price || 0)
+              }] : []);
 
-          if (museumItem) {
-            const qty = Number(data.quantity || data.items?.[0]?.quantity || 1);
-            const unitCost = Number(
-              data.cost_each || 
-              (data.cost_total && qty ? Math.round(data.cost_total / qty) : 0) || 
-              data.cost || 
-              data.price || 
-              (data.items?.[0]?.cost || 0) || 
-              museumItem.buyPrice
-            );
-            const source = title.includes('abroad') || data.area ? 'abroad' : title.includes('bazaar') ? 'bazaar' : 'market';
+          for (const itemEntry of itemsList) {
+            const museumItem = ALL_MUSEUM_ITEMS_MAP.get(itemEntry.id);
+            if (museumItem) {
+              const qty = itemEntry.qty;
+              const unitCost = itemEntry.unitCost || museumItem.buyPrice;
+              const source = title.includes('abroad') || data.area ? 'abroad' : title.includes('bazaar') ? 'bazaar' : 'market';
 
-            try {
-              const [insertRes] = await pool.query(
-                `INSERT IGNORE INTO inventory_lots 
-                 (torn_log_id, item_id, item_name, item_type, source, qty_initial, qty_remaining, unit_cost, purchased_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [logId, museumItem.id, museumItem.name, museumItem.type, source, qty, qty, unitCost, logDate]
-              );
-              if (insertRes.affectedRows > 0) importedLots++;
-            } catch (err) {
-              console.warn('[Sync] Error inserting lot:', err.message);
+              try {
+                const [insertRes] = await pool.query(
+                  `INSERT INTO inventory_lots 
+                   (torn_log_id, item_id, item_name, item_type, source, qty_initial, qty_remaining, unit_cost, purchased_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE 
+                     qty_initial = VALUES(qty_initial),
+                     qty_remaining = GREATEST(0, VALUES(qty_initial) - (qty_initial - qty_remaining)),
+                     unit_cost = VALUES(unit_cost)`,
+                  [logId, museumItem.id, museumItem.name, museumItem.type, source, qty, qty, unitCost, logDate]
+                );
+                if (insertRes.affectedRows > 0) importedLots++;
+              } catch (err) {
+                console.warn('[Sync] Error inserting lot:', err.message);
+              }
             }
           }
         }
 
-        // B. Trades & Outgoing Items (FIFO Deductions)
+        // B. Museum Exchange (Auto Point Conversion)
+        const isMuseumExchange = title.includes('museum exchange') || Number(entry.log) === 7000 || category === 'museum';
+        if (isMuseumExchange) {
+          const setName = (data.set || '').toLowerCase();
+          const isFlower = setName.includes('flower');
+          const setType = isFlower ? 'flower' : 'plushie';
+          const setItemList = isFlower ? FLOWER_SET : PLUSHIE_SET;
+          const setsConverted = Number(data.quantity || 1);
+          const pointsGenerated = Number(data.points_received || setsConverted * 10);
+
+          const [existingConv] = await pool.query(
+            `SELECT id FROM point_conversions WHERE torn_log_id = ?`,
+            [logId]
+          );
+
+          if (existingConv.length === 0) {
+            let totalCostBasis = 0;
+
+            for (const setItem of setItemList) {
+              let unitsNeeded = setsConverted;
+              const [lots] = await pool.query(
+                `SELECT id, qty_remaining, unit_cost FROM inventory_lots 
+                 WHERE item_id = ? AND qty_remaining > 0 
+                 ORDER BY purchased_at ASC, id ASC`,
+                [setItem.id]
+              );
+
+              for (const lot of lots) {
+                if (unitsNeeded <= 0) break;
+                const deduct = Math.min(lot.qty_remaining, unitsNeeded);
+                await pool.query(
+                  `UPDATE inventory_lots SET qty_remaining = qty_remaining - ? WHERE id = ?`,
+                  [deduct, lot.id]
+                );
+                totalCostBasis += (deduct * Number(lot.unit_cost));
+                unitsNeeded -= deduct;
+              }
+
+              if (unitsNeeded > 0) {
+                totalCostBasis += (unitsNeeded * setItem.buyPrice);
+              }
+            }
+
+            const breakevenPerPoint = pointsGenerated > 0 ? (totalCostBasis / pointsGenerated) : 0;
+
+            await pool.query(
+              `INSERT INTO point_conversions 
+               (torn_log_id, set_type, sets_converted, points_generated, total_cost_basis, breakeven_per_point, points_sold, sale_price_per_point, net_profit, converted_at)
+               VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?)`,
+              [logId, setType, setsConverted, pointsGenerated, totalCostBasis, breakevenPerPoint, logDate]
+            );
+
+            console.log(`[Sync] Recorded Museum Exchange: ${setsConverted}x ${setType} sets -> ${pointsGenerated} pts. FIFO Cost: $${totalCostBasis.toLocaleString()} (Breakeven: $${breakevenPerPoint.toFixed(2)}/pt)`);
+          }
+        }
+
+        // C. Trades & Outgoing Items (FIFO Deductions)
         const isOutgoing = (title.includes('trade') && (title.includes('outgoing') || title.includes('add'))) ||
                            (title.includes('item') && title.includes('send')) ||
                            (title.includes('bazaar') && title.includes('customer buy'));
@@ -184,14 +249,50 @@ export class TornSyncService {
           }
         }
 
-        // C. Mugging losses / Upkeep / Happy Jumps (Xanax & eDVD) / Travel flights / Rent
+        // D. Points Market Sell (Realized Profit Tracking)
+        const isPointsMarketSell = title.includes('points market sell') || Number(entry.log) === 5011;
+        if (isPointsMarketSell) {
+          const qtySold = Number(data.quantity || 1);
+          const unitPrice = Number(data.cost_each || data.price_each || 0);
+
+          // Find active point conversions with unsold points
+          const [convs] = await pool.query(
+            `SELECT id, points_generated, points_sold, breakeven_per_point, net_profit 
+             FROM point_conversions 
+             WHERE points_sold < points_generated 
+             ORDER BY converted_at ASC, id ASC`
+          );
+
+          let remainingToSell = qtySold;
+          for (const conv of convs) {
+            if (remainingToSell <= 0) break;
+            const available = conv.points_generated - conv.points_sold;
+            const sellCount = Math.min(available, remainingToSell);
+            const batchCost = sellCount * Number(conv.breakeven_per_point);
+            const batchRevenue = sellCount * unitPrice;
+            const batchProfit = batchRevenue - batchCost;
+
+            await pool.query(
+              `UPDATE point_conversions 
+               SET points_sold = points_sold + ?,
+                   sale_price_per_point = ?,
+                   net_profit = net_profit + ?
+               WHERE id = ?`,
+              [sellCount, unitPrice, batchProfit, conv.id]
+            );
+            remainingToSell -= sellCount;
+            console.log(`[Sync] Realized Points Sale: ${sellCount} pts @ $${unitPrice} (Profit: +$${batchProfit.toLocaleString()})`);
+          }
+        }
+
+        // E. Mugging losses / Upkeep / Happy Jumps (Xanax & eDVD) / Travel flights / Rent
         let expenseCat = null;
-        let expenseAmount = Number(data.cost || data.money || data.lost || data.cost_total || data.rent || 0);
+        let expenseAmount = Number(data.cost || data.money || data.lost || data.cost_total || data.rent || data.money_mugged || 0);
 
         if (title.includes('mug') || title.includes('attack') || category === 'attacking') {
-          if (title.includes('lost') || data.lost > 0) {
+          if (title.includes('lost') || data.lost > 0 || data.money_mugged > 0) {
             expenseCat = 'mug_loss';
-            expenseAmount = Number(data.lost || data.money || 0);
+            expenseAmount = Number(data.money_mugged || data.lost || data.money || 0);
           }
         } else if (title.includes('upkeep') || title.includes('staff')) {
           expenseCat = 'upkeep';
