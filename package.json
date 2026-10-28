@@ -1,0 +1,24 @@
+{
+  "name": "torn-museum-expense-ledger",
+  "version": "1.0.0",
+  "description": "Torn Museum & Expense Ledger (Full-Stack Web App + Android PWA)",
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:client": "cd client && npm install",
+    "install:all": "npm run install:server && npm run install:client",
+    "server": "cd server && npm start",
+    "server:dev": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "build:client": "cd client && npm run build"
+  },
+  "keywords": [
+    "torn",
+    "museum",
+    "fifo",
+    "ledger",
+    "expenses",
+    "pwa"
+  ],
+  "author": "Full-Stack Architect",
+  "license": "MIT"
+}

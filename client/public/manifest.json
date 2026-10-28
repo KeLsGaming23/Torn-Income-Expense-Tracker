@@ -1,0 +1,55 @@
+{
+  "short_name": "TornLedger",
+  "name": "Torn Museum & Expense Ledger",
+  "description": "Production-ready FIFO Museum Inventory, Point Conversion & Expense Tracker for Torn.com",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#0a0d14",
+  "theme_color": "#10b981",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "games", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Museum Sets",
+      "short_name": "Sets",
+      "description": "View and convert Flower and Plushie sets",
+      "url": "/#sets",
+      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Ledger & Expenses",
+      "short_name": "Ledger",
+      "description": "Record income, flight expenses, or rehab costs",
+      "url": "/#transactions",
+      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "FIFO Inventory",
+      "short_name": "Inventory",
+      "description": "Check flower & plushie stock batches",
+      "url": "/#inventory",
+      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+    }
+  ]
+}
