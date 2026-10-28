@@ -512,10 +512,20 @@ app.use((err, req, res, next) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
+  let dbTarget = process.env.DB_NAME || 'torn_ledger_db';
+  if (process.env.DATABASE_URL) {
+    try {
+      const u = new URL(process.env.DATABASE_URL);
+      dbTarget = `${u.host}${u.pathname}`;
+    } catch (e) {
+      dbTarget = 'Cloud Database (DATABASE_URL)';
+    }
+  }
+
   console.log(`====================================================`);
-  console.log(` Torn Ledger Server running on http://localhost:${PORT}`);
-  console.log(` Database: ${process.env.DB_NAME || 'torn_ledger_db'}`);
+  console.log(` Torn Ledger Server running on port ${PORT}`);
+  console.log(` Database: ${dbTarget}`);
   console.log(`====================================================`);
 
   // Background Auto-Sync Interval
