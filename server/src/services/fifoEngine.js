@@ -13,7 +13,7 @@ export class FIFOEngine {
 
     // Query inventory_lots for quantities and min/max costs
     const [lotsSummary] = await pool.query(
-      `SELECT item_id, item_name,
+      `SELECT item_id, MAX(item_name) AS item_name,
               COALESCE(SUM(qty_remaining), 0) AS total_qty,
               MIN(CASE WHEN qty_remaining > 0 THEN unit_cost ELSE NULL END) AS min_cost,
               MAX(CASE WHEN qty_remaining > 0 THEN unit_cost ELSE NULL END) AS max_cost,

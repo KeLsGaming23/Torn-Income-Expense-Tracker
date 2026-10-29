@@ -18,7 +18,7 @@ export class FIFOService {
        FROM torn_items i
        LEFT JOIN inventory_batches b ON i.item_id = b.item_id AND b.quantity_remaining > 0
        WHERE i.item_id IN (?)
-       GROUP BY i.item_id`,
+       GROUP BY i.item_id, i.name, i.country_origin, i.buy_price, i.market_value`,
       [itemIds]
     );
 
