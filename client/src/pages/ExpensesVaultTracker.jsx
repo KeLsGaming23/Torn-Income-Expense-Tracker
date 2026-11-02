@@ -148,7 +148,7 @@ export default function ExpensesVaultTracker() {
           1-Click Quick Expense Presets
         </span>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <button
             onClick={() => handleQuickLog('upkeep', '150000', 'Daily Private Island Staff & Upkeep')}
             className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
@@ -159,21 +159,21 @@ export default function ExpensesVaultTracker() {
           </button>
 
           <button
-            onClick={() => handleQuickLog('happy_jump', '840000', '1x Xanax for Training')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
-          >
-            <Flame className="h-5 w-5 text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-white">Happy Jump</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Xanax / eDVD</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickLog('rent', '500000', 'Weekly Property Lease Payment')}
+            onClick={() => handleQuickLog('rent', '24000000', 'Property Lease Payment')}
             className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
           >
             <Home className="h-5 w-5 text-blue-400 mb-1 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-bold text-white">Property Rent</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Lease Fee</span>
+            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Lease Payment</span>
+          </button>
+
+          <button
+            onClick={() => handleQuickLog('travel', '32000', 'Flight / Travel Fee')}
+            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
+          >
+            <Plane className="h-5 w-5 text-cyan-400 mb-1 group-hover:scale-110 transition-transform" />
+            <span className="text-xs font-bold text-white">Travel Fee</span>
+            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Flight Cost</span>
           </button>
 
           <button
@@ -183,15 +183,6 @@ export default function ExpensesVaultTracker() {
             <ShieldAlert className="h-5 w-5 text-rose-400 mb-1 group-hover:scale-110 transition-transform" />
             <span className="text-xs font-bold text-white">Mugged Loss</span>
             <span className="text-[10px] text-slate-400 font-mono mt-0.5">Loss Log</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickLog('vault_deposit', '', 'Deposit Cash to Vault')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group col-span-2 sm:col-span-1"
-          >
-            <DollarSign className="h-5 w-5 text-emerald-400 mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-white">Vault Deposit</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Protect Cash</span>
           </button>
         </div>
       </div>

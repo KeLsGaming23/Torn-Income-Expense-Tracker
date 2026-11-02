@@ -73,7 +73,15 @@ app.get('/api/sync/status', async (req, res) => {
       success: true,
       syncState: state[0] || null,
       travelInfo,
-      wallet: wallet[0] || { money_onhand: 0, vault_amount: 0, points_balance: 0, current_market_point_price: 45000 }
+      wallet: wallet[0] || {
+        money_onhand: 0,
+        vault_amount: 0,
+        faction_vault_amount: 0,
+        city_bank_amount: 0,
+        property_vault_amount: 0,
+        points_balance: 0,
+        current_market_point_price: 45000
+      }
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -266,7 +274,96 @@ app.get('/api/inventory/master-items', (req, res) => {
 });
 
 // ==========================================
-// 4. EXPENSES LEDGER & VAULT TRACKER
+// 4. INCOME LEDGER ENDPOINTS
+// ==========================================
+
+// Get income
+app.get('/api/income', async (req, res) => {
+  try {
+    const { category, startDate, endDate, limit = 100, page = 1 } = req.query;
+    let query = `SELECT * FROM income_ledger WHERE 1=1`;
+    const params = [];
+
+    if (category) {
+      query += ` AND category = ?`;
+      params.push(category);
+    }
+    if (startDate) {
+      query += ` AND logged_at >= ?`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ` AND logged_at <= ?`;
+      params.push(endDate);
+    }
+
+    query += ` ORDER BY logged_at DESC, id DESC LIMIT ? OFFSET ?`;
+    const lim = parseInt(limit, 10);
+    const off = (parseInt(page, 10) - 1) * lim;
+    params.push(lim, off);
+
+    const [rows] = await pool.query(query, params);
+
+    // Sum by category for breakdown
+    const [breakdown] = await pool.query(
+      `SELECT category, SUM(amount) AS total, COUNT(*) AS count 
+       FROM income_ledger 
+       GROUP BY category 
+       ORDER BY total DESC`
+    );
+
+    const [totalSum] = await pool.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM income_ledger`);
+    const [total30d] = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM income_ledger WHERE logged_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
+    );
+
+    res.json({
+      success: true,
+      totalIncome: Number(totalSum[0]?.total || 0),
+      totalIncome30d: Number(total30d[0]?.total || 0),
+      breakdown: breakdown.map(b => ({ category: b.category, amount: Number(b.total), count: Number(b.count) })),
+      incomes: rows
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Quick-log income
+app.post('/api/income', async (req, res) => {
+  try {
+    const { category, amount, description, loggedAt } = req.body;
+    if (!category || !amount) {
+      return res.status(400).json({ success: false, message: 'Category and amount are required.' });
+    }
+
+    const date = loggedAt ? new Date(loggedAt) : new Date();
+
+    const [result] = await pool.query(
+      `INSERT INTO income_ledger (category, amount, description, logged_at)
+       VALUES (?, ?, ?, ?)`,
+      [category, Number(amount), description || `${category} income`, date]
+    );
+
+    res.json({ success: true, incomeId: result.insertId });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Delete income
+app.delete('/api/income/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    await pool.query(`DELETE FROM income_ledger WHERE id = ?`, [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 5. EXPENSES LEDGER & VAULT TRACKER
 // ==========================================
 
 // Get expenses
@@ -331,17 +428,6 @@ app.post('/api/expenses', async (req, res) => {
       [category, Number(amount), description || `${category} expense`, date]
     );
 
-    // If vault deposit, update snapshot
-    if (category === 'vault_deposit') {
-      await pool.query(
-        `UPDATE wallet_snapshots 
-         SET money_onhand = GREATEST(0, money_onhand - ?),
-             vault_amount = vault_amount + ? 
-         ORDER BY id DESC LIMIT 1`,
-        [Number(amount), Number(amount)]
-      );
-    }
-
     res.json({ success: true, expenseId: result.insertId });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -360,30 +446,37 @@ app.delete('/api/expenses/:id', async (req, res) => {
 });
 
 // ==========================================
-// 5. COMMAND CENTER (DASHBOARD)
+// 6. COMMAND CENTER (DASHBOARD)
 // ==========================================
 
 app.get('/api/dashboard/command-center', async (req, res) => {
   try {
-    // 1. Wallet & Mug Risk
+    // 1. Wallet & Safe Reserve Breakdown
     const [walletRows] = await pool.query(`SELECT * FROM wallet_snapshots ORDER BY id DESC LIMIT 1`);
     const wallet = walletRows[0] || {
-      money_onhand: 2558177,
-      vault_amount: 73094400,
-      points_balance: 34,
+      money_onhand: 562635,
+      vault_amount: 59466872,
+      faction_vault_amount: 59466872,
+      city_bank_amount: 74095000,
+      property_vault_amount: 0,
+      points_balance: 94,
       current_market_point_price: 45000
     };
 
-    const moneyOnHand = Number(wallet.money_onhand);
-    const vaultAmount = Number(wallet.vault_amount);
-    const pointsBalance = Number(wallet.points_balance);
-    const pointPrice = Number(wallet.current_market_point_price);
+    const moneyOnHand = Number(wallet.money_onhand || 0);
+    const factionVault = Number(wallet.faction_vault_amount || 0);
+    const cityBank = Number(wallet.city_bank_amount || 0);
+    const propertyVault = Number(wallet.property_vault_amount || 0);
+    const vaultAmount = factionVault + propertyVault;
+    const pointsBalance = Number(wallet.points_balance || 0);
+    const pointPrice = Number(wallet.current_market_point_price || 45000);
 
     // Mug Risk calculation: threshold is $500,000 cash on hand
     const safeThreshold = 500000;
     const isMugRiskHigh = moneyOnHand > safeThreshold;
-    const totalCash = moneyOnHand + vaultAmount;
-    const protectedRatio = totalCash > 0 ? (vaultAmount / totalCash) * 100 : 100;
+    const totalLiquidSafe = vaultAmount; // Immediately withdrawable safe cash
+    const totalCash = moneyOnHand + vaultAmount + cityBank;
+    const protectedRatio = totalCash > 0 ? ((vaultAmount + cityBank) / totalCash) * 100 : 100;
 
     // 2. Active Leftover Inventory Value
     const [invRows] = await pool.query(
@@ -394,7 +487,14 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     const activeLeftoverUnits = Number(invRows[0]?.total_units || 0);
     const activeLeftoverValue = Number(invRows[0]?.total_cost_basis || 0);
 
-    // 3. Monthly Net Profit from Point Conversions
+    // 3. Monthly Income & Net Profit
+    const [incRows] = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) AS total_income
+       FROM income_ledger 
+       WHERE logged_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
+    );
+    const monthlyTotalIncome = Number(incRows[0]?.total_income || 0);
+
     const [profitRows] = await pool.query(
       `SELECT COALESCE(SUM(net_profit), 0) AS total_profit,
               COALESCE(SUM(points_generated), 0) AS total_points_gen
@@ -403,7 +503,7 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     );
     const monthlyNetProfit = Number(profitRows[0]?.total_profit || 0);
 
-    // 4. Total Monthly Expenses
+    // 4. Total Monthly Operational Expenses (Rent, Upkeep, Travel)
     const [expRows] = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) AS total_expense 
        FROM expenses_ledger 
@@ -414,11 +514,11 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     // 5. Total Points Value
     const totalPointsValue = pointsBalance * pointPrice;
 
-    // 6. Visual Chart: ComposedChart (Daily Museum Profit vs Operational Expenses)
+    // 6. Visual Chart: ComposedChart (Daily Realized Income vs Operational Expenses)
     const [chartData] = await pool.query(
       `SELECT 
          dates.d AS date,
-         COALESCE(p.profit, 0) AS museum_profit,
+         COALESCE(i.income, 0) AS daily_income,
          COALESCE(e.expense, 0) AS operational_expense
        FROM (
          SELECT DATE(DATE_SUB(NOW(), INTERVAL n DAY)) AS d
@@ -427,10 +527,10 @@ app.get('/api/dashboard/command-center', async (req, res) => {
                UNION SELECT 10 UNION SELECT 11 UNION SELECT 12 UNION SELECT 13 UNION SELECT 14) days
        ) dates
        LEFT JOIN (
-         SELECT DATE(converted_at) AS cd, SUM(net_profit) AS profit
-         FROM point_conversions
-         GROUP BY DATE(converted_at)
-       ) p ON dates.d = p.cd
+         SELECT DATE(logged_at) AS idate, SUM(amount) AS income
+         FROM income_ledger
+         GROUP BY DATE(logged_at)
+       ) i ON dates.d = i.idate
        LEFT JOIN (
          SELECT DATE(logged_at) AS ld, SUM(amount) AS expense
          FROM expenses_ledger
@@ -457,19 +557,23 @@ app.get('/api/dashboard/command-center', async (req, res) => {
       mugRisk: {
         moneyOnHand,
         vaultAmount,
+        factionVault,
+        cityBank,
+        propertyVault,
         totalCash,
         protectedRatio,
         isMugRiskHigh,
         safeThreshold
       },
       kpis: {
+        monthlyTotalIncome,
         monthlyNetProfit,
         totalPointsValue,
         pointsBalance,
         activeLeftoverValue,
         activeLeftoverUnits,
         monthlyExpenses,
-        netCashflow: monthlyNetProfit - monthlyExpenses
+        netCashflow: monthlyTotalIncome - monthlyExpenses
       },
       setsReady: {
         flower: flowerSim.maxSets,
@@ -477,7 +581,7 @@ app.get('/api/dashboard/command-center', async (req, res) => {
       },
       chartData: chartData.map(c => ({
         date: c.date,
-        museum_profit: Number(c.museum_profit),
+        daily_income: Number(c.daily_income),
         operational_expense: Number(c.operational_expense)
       }))
     });
@@ -485,6 +589,7 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     console.error('[Dashboard Error]', err);
     res.status(500).json({ success: false, message: err.message });
   }
+});
 });
 
 // Health check

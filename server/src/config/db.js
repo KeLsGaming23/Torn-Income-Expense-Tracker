@@ -72,6 +72,45 @@ async function initSchema(connection) {
         console.log('[Database] Schema initialization complete!');
       }
     }
+
+    // Incremental migrations check: Ensure income_ledger exists
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS income_ledger (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        torn_log_id VARCHAR(64) UNIQUE NULL,
+        category ENUM(
+          'crimes',
+          'bazaar_sale',
+          'trade_income',
+          'points_sale',
+          'mugging_gain',
+          'bank_interest',
+          'company_pay',
+          'faction_payout',
+          'manual'
+        ) NOT NULL,
+        amount BIGINT NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        metadata_json JSON NULL,
+        logged_at DATETIME NOT NULL,
+        INDEX idx_inc_category (category),
+        INDEX idx_inc_logged_at (logged_at)
+      ) ENGINE=InnoDB;
+    `);
+
+    // Ensure wallet_snapshots has new columns
+    const [cols] = await connection.query(`SHOW COLUMNS FROM wallet_snapshots`);
+    const colNames = cols.map(c => c.Field);
+
+    if (!colNames.includes('faction_vault_amount')) {
+      await connection.query(`ALTER TABLE wallet_snapshots ADD COLUMN faction_vault_amount BIGINT NOT NULL DEFAULT 0 AFTER vault_amount`);
+    }
+    if (!colNames.includes('city_bank_amount')) {
+      await connection.query(`ALTER TABLE wallet_snapshots ADD COLUMN city_bank_amount BIGINT NOT NULL DEFAULT 0 AFTER faction_vault_amount`);
+    }
+    if (!colNames.includes('property_vault_amount')) {
+      await connection.query(`ALTER TABLE wallet_snapshots ADD COLUMN property_vault_amount BIGINT NOT NULL DEFAULT 0 AFTER city_bank_amount`);
+    }
   } catch (err) {
     console.warn('[Database] Schema check error:', err.message);
   }

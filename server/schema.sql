@@ -46,7 +46,30 @@ CREATE TABLE IF NOT EXISTS `point_conversions` (
     INDEX `idx_converted_at` (`converted_at`)
 ) ENGINE=InnoDB;
 
--- 4. Expenses Ledger
+-- 4. Income Ledger
+CREATE TABLE IF NOT EXISTS `income_ledger` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `torn_log_id` VARCHAR(64) UNIQUE NULL,
+    `category` ENUM(
+        'crimes',          -- Crimes 2.0 cash gain only (Log 9015)
+        'bazaar_sale',     -- Bazaar customer purchases (Log 1210)
+        'trade_income',    -- Personal player trades (Log 4441)
+        'points_sale',     -- Points market proceeds (Log 5011)
+        'mugging_gain',    -- Attack mug cash (Log 8155)
+        'bank_interest',   -- City bank maturation payout (Log 1000/1001)
+        'company_pay',     -- Job paycheck
+        'faction_payout',  -- Faction bank payouts
+        'manual'           -- Custom entry
+    ) NOT NULL,
+    `amount` BIGINT NOT NULL,
+    `description` VARCHAR(255) NOT NULL,
+    `metadata_json` JSON NULL,
+    `logged_at` DATETIME NOT NULL,
+    INDEX `idx_inc_category` (`category`),
+    INDEX `idx_inc_logged_at` (`logged_at`)
+) ENGINE=InnoDB;
+
+-- 5. Expenses Ledger
 CREATE TABLE IF NOT EXISTS `expenses_ledger` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `torn_log_id` VARCHAR(64) UNIQUE NULL,
@@ -58,18 +81,21 @@ CREATE TABLE IF NOT EXISTS `expenses_ledger` (
     INDEX `idx_logged_at` (`logged_at`)
 ) ENGINE=InnoDB;
 
--- 5. Wallet Snapshots
+-- 6. Wallet Snapshots
 CREATE TABLE IF NOT EXISTS `wallet_snapshots` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `money_onhand` BIGINT NOT NULL DEFAULT 0,
     `vault_amount` BIGINT NOT NULL DEFAULT 0,
+    `faction_vault_amount` BIGINT NOT NULL DEFAULT 0,
+    `city_bank_amount` BIGINT NOT NULL DEFAULT 0,
+    `property_vault_amount` BIGINT NOT NULL DEFAULT 0,
     `points_balance` INT NOT NULL DEFAULT 0,
     `current_market_point_price` INT NOT NULL DEFAULT 45000,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB;
 
--- 6. Pending Trade Review Queue
+-- 7. Pending Trade Review Queue
 CREATE TABLE IF NOT EXISTS `pending_trades` (
     `id` INT AUTO_INCREMENT PRIMARY KEY,
     `torn_log_id` VARCHAR(64) UNIQUE NULL,

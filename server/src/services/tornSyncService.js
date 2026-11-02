@@ -28,19 +28,25 @@ export class TornSyncService {
 
     let importedLots = 0;
     let importedExpenses = 0;
+    let importedIncomes = 0;
     let newLastTimestamp = lastTimestamp;
 
-    // 2. Fetch User Money & Profile & Travel
+    // 2. Fetch User Money & Profile & Travel & Faction Vault
     let userData = null;
+    let factionData = null;
     try {
-      const userRes = await axios.get(`https://api.torn.com/user/?selections=basic,money,travel&key=${apiKey}`, { timeout: 15000 });
-      if (userRes.data?.error) {
-        console.warn('[Sync] Torn API returned error for user details:', userRes.data.error);
-      } else {
-        userData = userRes.data;
+      const [userRes, factionRes] = await Promise.allSettled([
+        axios.get(`https://api.torn.com/user/?selections=basic,money,travel&key=${apiKey}`, { timeout: 15000 }),
+        axios.get(`https://api.torn.com/faction/?selections=donations&key=${apiKey}`, { timeout: 15000 })
+      ]);
+      if (userRes.status === 'fulfilled' && !userRes.value.data?.error) {
+        userData = userRes.value.data;
+      }
+      if (factionRes.status === 'fulfilled' && !factionRes.value.data?.error) {
+        factionData = factionRes.value.data;
       }
     } catch (e) {
-      console.warn('[Sync] Could not fetch user basic/money:', e.message);
+      console.warn('[Sync] Could not fetch user/faction data:', e.message);
     }
 
     // 3. Fetch Live Points Market
@@ -249,7 +255,7 @@ export class TornSyncService {
           }
         }
 
-        // D. Points Market Sell (Realized Profit Tracking)
+        // D. Points Market Sell (Realized Profit Tracking & Income Ingestion)
         const isPointsMarketSell = title.includes('points market sell') || Number(entry.log) === 5011;
         if (isPointsMarketSell) {
           const qtySold = Number(data.quantity || 1);
@@ -283,9 +289,128 @@ export class TornSyncService {
             remainingToSell -= sellCount;
             console.log(`[Sync] Realized Points Sale: ${sellCount} pts @ $${unitPrice} (Profit: +$${batchProfit.toLocaleString()})`);
           }
+
+          // Ingest into unified income_ledger
+          const totalPointsRevenue = qtySold * unitPrice;
+          if (totalPointsRevenue > 0) {
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'points_sale', ?, ?, ?, ?)`,
+                [logId, totalPointsRevenue, `Sold ${qtySold} points @ $${unitPrice.toLocaleString()}/pt`, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Points income insert error:', err.message);
+            }
+          }
         }
 
-        // E. Mugging losses / Upkeep / Happy Jumps (Xanax & eDVD) / Travel flights / Rent
+        // E. Crimes 2.0 Cash Gain (Log 9015)
+        const isCrimeMoney = Number(entry.log) === 9015 || (title.includes('crime') && (data.money_gain > 0 || data.money > 0));
+        if (isCrimeMoney) {
+          const crimeMoney = Number(data.money_gain || data.money || 0);
+          if (crimeMoney > 0) {
+            const crimeDesc = data.crime_name ? `Crime: ${data.crime_name}` : (entry.title || 'Crimes 2.0 Gain');
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'crimes', ?, ?, ?, ?)`,
+                [logId, crimeMoney, crimeDesc, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Crime income insert error:', err.message);
+            }
+          }
+        }
+
+        // F. Bazaar Sales (Log 1210)
+        const isBazaarSale = Number(entry.log) === 1210 || (title.includes('bazaar') && title.includes('customer buy'));
+        if (isBazaarSale) {
+          const bazaarRevenue = Number(data.cost_total || data.cost || data.price || (data.cost_each && data.quantity ? data.cost_each * data.quantity : 0) || 0);
+          if (bazaarRevenue > 0) {
+            const buyer = data.buyer_name || data.player || 'Customer';
+            const itemName = data.item_name || (data.item ? `Item #${data.item}` : 'Items');
+            const desc = `Bazaar: ${data.quantity ? data.quantity + 'x ' : ''}${itemName} sold to ${buyer}`;
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'bazaar_sale', ?, ?, ?, ?)`,
+                [logId, bazaarRevenue, desc, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Bazaar income insert error:', err.message);
+            }
+          }
+        }
+
+        // G. Personal Player Trades (Log 4441)
+        const isTradeIncomingMoney = Number(entry.log) === 4441 || (title.includes('trade') && title.includes('money incoming'));
+        if (isTradeIncomingMoney) {
+          const tradeCash = Number(data.money || 0);
+          if (tradeCash > 0) {
+            const tradeId = data.parsed_trade_id || (data.trade_id && typeof data.trade_id === 'number' ? data.trade_id : null);
+            const traderUser = data.user || 'Trader';
+            const desc = `Trade #${tradeId || ''} with Player #${traderUser}`;
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'trade_income', ?, ?, ?, ?)`,
+                [logId, tradeCash, desc, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Trade income insert error:', err.message);
+            }
+          }
+        }
+
+        // H. Mugging Cash Gain (Log 8155)
+        const isMugWin = Number(entry.log) === 8155 || ((title.includes('mug') || title.includes('attack')) && (data.money_mugged > 0 || data.money_gain > 0) && !title.includes('lost') && !title.includes('receive'));
+        if (isMugWin) {
+          const mugCash = Number(data.money_mugged || data.money_gain || data.money || 0);
+          if (mugCash > 0) {
+            const target = data.target_name || data.defender_name || data.player || 'Target';
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'mugging_gain', ?, ?, ?, ?)`,
+                [logId, mugCash, `Mugged ${target} (+$${mugCash.toLocaleString()})`, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Mug income insert error:', err.message);
+            }
+          }
+        }
+
+        // I. City Bank Maturation Interest (Log 1000 / 1001)
+        const isBankInterest = (Number(entry.log) === 1000 || Number(entry.log) === 1001 || title.includes('bank investment') || title.includes('bank interest')) && (data.profit > 0 || data.interest > 0);
+        if (isBankInterest) {
+          const interestAmt = Number(data.profit || data.interest || 0);
+          if (interestAmt > 0) {
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'bank_interest', ?, ?, ?, ?)`,
+                [logId, interestAmt, `City Bank Maturation Profit`, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Bank interest insert error:', err.message);
+            }
+          }
+        }
+
+        // J. Expenses: Mug losses / Upkeep / Travel flights / Rent (Faction drugs excluded)
         let expenseCat = null;
         let expenseAmount = Number(data.cost || data.money || data.lost || data.cost_total || data.rent || data.money_mugged || 0);
 
@@ -296,11 +421,6 @@ export class TornSyncService {
           }
         } else if (title.includes('upkeep') || title.includes('staff')) {
           expenseCat = 'upkeep';
-        } else if (title.includes('edvd') || title.includes('xanax') || (title.includes('drug') && title.includes('use')) || title.includes('ecstasy')) {
-          expenseCat = 'happy_jump';
-          if (!expenseAmount) {
-            expenseAmount = title.includes('xanax') ? 835000 : title.includes('edvd') ? 3800000 : 70000;
-          }
         } else if (title.includes('rent') || title.includes('lease') || title.includes('property rental')) {
           // Ignore pending offers or extensions, only log actual completed rental payment
           if (!title.includes('offer') && !title.includes('extension')) {
@@ -308,9 +428,8 @@ export class TornSyncService {
           }
         } else if (title.includes('travel') && title.includes('fee')) {
           expenseCat = 'travel';
-        } else if (title.includes('vault') && title.includes('deposit')) {
-          expenseCat = 'vault_deposit';
         }
+        // Notice: Happy jump drugs (Xanax/Ecstasy/eDVD) and vault deposits are deliberately excluded as expenses
 
         if (expenseCat && expenseAmount > 0) {
           try {
@@ -341,26 +460,34 @@ export class TornSyncService {
       );
     }
 
-    // 6. Insert / Update Wallet Snapshot
+    // 6. Insert / Update Wallet Snapshot with independent Faction Vault & City Bank columns
+    const playerId = String(userData?.player_id || 4161786);
+    const factionVaultAmount = Number(factionData?.donations?.[playerId]?.money_balance || 0);
+    const cityBankAmount = Number(userData?.city_bank?.amount || 0);
+    const propertyVaultAmount = Number(userData?.vault_amount || 0);
+    const vaultAmount = factionVaultAmount + propertyVaultAmount;
     const moneyOnHand = Number(userData?.money_onhand || 0);
-    const vaultAmount = Number(userData?.city_bank?.amount || userData?.vault_amount || 0);
     const pointsBalance = Number(userData?.points || 0);
 
     await pool.query(
-      `INSERT INTO wallet_snapshots (money_onhand, vault_amount, points_balance, current_market_point_price, created_at)
-       VALUES (?, ?, ?, ?, NOW())`,
-      [moneyOnHand, vaultAmount, pointsBalance, lowestPointsMarketListing]
+      `INSERT INTO wallet_snapshots (money_onhand, vault_amount, faction_vault_amount, city_bank_amount, property_vault_amount, points_balance, current_market_point_price, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [moneyOnHand, vaultAmount, factionVaultAmount, cityBankAmount, propertyVaultAmount, pointsBalance, lowestPointsMarketListing]
     );
 
     return {
       success: true,
       importedLots,
       importedExpenses,
+      importedIncomes,
       lastLogTimestamp: newLastTimestamp,
       travel: userData?.travel || null,
       wallet: {
         moneyOnHand,
         vaultAmount,
+        factionVaultAmount,
+        cityBankAmount,
+        propertyVaultAmount,
         pointsBalance,
         lowestPointsMarketListing,
         averageTop10Listings

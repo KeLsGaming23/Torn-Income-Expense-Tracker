@@ -1,6 +1,7 @@
 import React from 'react';
 import { 
   LayoutDashboard, 
+  TrendingUp,
   Sparkles, 
   Calculator,
   Boxes, 
@@ -10,6 +11,7 @@ import {
 export default function MobileNav({ activeTab, setActiveTab }) {
   const tabs = [
     { id: 'dashboard', label: 'Command', icon: LayoutDashboard },
+    { id: 'income', label: 'Income', icon: TrendingUp },
     { id: 'museum', label: 'Museum', icon: Sparkles },
     { id: 'calculator', label: 'Calc', icon: Calculator },
     { id: 'leftovers', label: 'Leftovers', icon: Boxes },

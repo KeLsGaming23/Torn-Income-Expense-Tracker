@@ -1,6 +1,7 @@
 import React from 'react';
 import { 
   LayoutDashboard, 
+  TrendingUp,
   Sparkles, 
   Calculator,
   Boxes, 
@@ -16,6 +17,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 
   const navItems = [
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
+    { id: 'income', label: 'Income Ledger', icon: TrendingUp },
     { 
       id: 'museum', 
       label: 'Museum Set Builder', 

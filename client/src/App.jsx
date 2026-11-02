@@ -5,8 +5,9 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 
-// 5 Main Views
+// 6 Main Views
 import CommandCenter from './pages/CommandCenter';
+import IncomeLedger from './pages/IncomeLedger';
 import MuseumSetBuilder from './pages/MuseumSetBuilder';
 import ProfitCalculator from './pages/ProfitCalculator';
 import LeftoversVault from './pages/LeftoversVault';
@@ -56,6 +57,7 @@ export default function App() {
         {/* Main Views Container */}
         <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
           {activeTab === 'dashboard' && <CommandCenter setActiveTab={setActiveTab} />}
+          {activeTab === 'income' && <IncomeLedger />}
           {activeTab === 'museum' && <MuseumSetBuilder setActiveTab={setActiveTab} />}
           {activeTab === 'calculator' && <ProfitCalculator />}
           {activeTab === 'leftovers' && <LeftoversVault />}

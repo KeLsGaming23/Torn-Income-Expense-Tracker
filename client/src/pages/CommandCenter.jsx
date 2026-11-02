@@ -83,7 +83,7 @@ export default function CommandCenter({ setActiveTab }) {
         </div>
       )}
 
-      {/* 1. MUG RISK ALERT BANNER */}
+      {/* 1. MUG RISK ALERT & SAFE ASSETS BANNER */}
       {mugRisk && (
         <div className={`rounded-3xl p-5 border transition-all ${
           mugRisk.isMugRiskHigh
@@ -100,7 +100,7 @@ export default function CommandCenter({ setActiveTab }) {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-extrabold text-white">
-                    {mugRisk.isMugRiskHigh ? 'High Mugging Risk Detected!' : 'Cash Secure in Protected Vault'}
+                    {mugRisk.isMugRiskHigh ? 'High Mugging Risk Detected!' : 'Cash Secure in Faction Vault & Bank'}
                   </h3>
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                     mugRisk.isMugRiskHigh ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
@@ -115,45 +115,68 @@ export default function CommandCenter({ setActiveTab }) {
                     </>
                   ) : (
                     <>
-                      Cash on hand is within the safe limit. <span className="font-bold text-emerald-400 font-mono">{formatMoney(mugRisk.vaultAmount)}</span> is protected in your Vault / City Bank.
+                      Cash on hand is within the safe limit. Your cash is safely stored in Faction Vault & City Bank.
                     </>
                   )}
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={() => setActiveTab('expenses')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 active:scale-95 ${
-                mugRisk.isMugRiskHigh 
-                  ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-md shadow-rose-950/40' 
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-              }`}
-            >
-              <span>{mugRisk.isMugRiskHigh ? 'Quick Deposit to Vault' : 'Open Vault Tracker'}</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveTab('income')}
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 active:scale-95"
+              >
+                <TrendingUp className="h-4 w-4 text-emerald-400" />
+                <span>Income Ledger</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('expenses')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 active:scale-95 ${
+                  mugRisk.isMugRiskHigh 
+                    ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-md shadow-rose-950/40' 
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                <span>{mugRisk.isMugRiskHigh ? 'Deposit to Vault' : 'View Reserves'}</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Progress Bar (Protected vs At Risk) */}
-          <div className="mt-4 pt-3 border-t border-slate-800/80">
-            <div className="flex justify-between items-center text-[11px] mb-1.5 font-medium">
-              <span className="text-slate-400">
-                Protected Cash: <strong className="text-emerald-400">{mugRisk.protectedRatio.toFixed(1)}%</strong>
-              </span>
-              <span className="text-slate-400">
-                At Risk on Hand: <strong className={mugRisk.isMugRiskHigh ? 'text-rose-400' : 'text-slate-300'}>{formatMoney(mugRisk.moneyOnHand)}</strong>
-              </span>
+          {/* Asset Breakdown Strip (Hand vs Faction Vault vs City Bank) */}
+          <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-slate-900/60 rounded-2xl p-3 border border-slate-800">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>Cash on Hand (At Risk)</span>
+                <span className={mugRisk.isMugRiskHigh ? 'text-rose-400 font-bold' : 'text-slate-300'}>
+                  {mugRisk.isMugRiskHigh ? 'Mug Danger' : 'Safe'}
+                </span>
+              </div>
+              <div className={`text-base font-bold font-mono ${mugRisk.isMugRiskHigh ? 'text-rose-300' : 'text-white'}`}>
+                {formatMoney(mugRisk.moneyOnHand)}
+              </div>
             </div>
-            <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden flex">
-              <div 
-                className="bg-emerald-500 h-full transition-all duration-500" 
-                style={{ width: `${Math.min(100, mugRisk.protectedRatio)}%` }} 
-              />
-              <div 
-                className="bg-rose-500 h-full transition-all duration-500" 
-                style={{ width: `${Math.max(0, 100 - mugRisk.protectedRatio)}%` }} 
-              />
+
+            <div className="bg-slate-900/60 rounded-2xl p-3 border border-slate-800">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>Faction Vault (Liquid Safe)</span>
+                <span className="text-emerald-400 font-bold">Safe</span>
+              </div>
+              <div className="text-base font-bold font-mono text-emerald-400">
+                {formatMoney(mugRisk.factionVault || mugRisk.vaultAmount || 0)}
+              </div>
+            </div>
+
+            <div className="bg-slate-900/60 rounded-2xl p-3 border border-slate-800">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>City Bank (Term Deposit)</span>
+                <span className="text-sky-400 font-bold">Locked</span>
+              </div>
+              <div className="text-base font-bold font-mono text-sky-300">
+                {formatMoney(mugRisk.cityBank || 0)}
+              </div>
             </div>
           </div>
         </div>
@@ -162,12 +185,21 @@ export default function CommandCenter({ setActiveTab }) {
       {/* 2. KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Monthly Net Profit"
-          value={formatMoney(kpis?.monthlyNetProfit || 0)}
-          subtitle="From FIFO museum conversions & sales"
-          icon={DollarSign}
+          title="30-Day Realized Income"
+          value={formatMoney(kpis?.monthlyTotalIncome || kpis?.monthlyNetProfit || 0)}
+          subtitle="Trades, Points, Crimes & Bazaar"
+          icon={TrendingUp}
           color="emerald"
-          onClick={() => setActiveTab('museum')}
+          onClick={() => setActiveTab('income')}
+        />
+
+        <StatCard
+          title="Net Cash Flow (30d)"
+          value={formatMoney(kpis?.netCashflow || 0)}
+          subtitle={`Income - Expenses (${formatMoney(kpis?.monthlyExpenses || 0)})`}
+          icon={DollarSign}
+          color={(kpis?.netCashflow || 0) >= 0 ? "emerald" : "rose"}
+          onClick={() => setActiveTab('income')}
         />
 
         <StatCard
@@ -180,18 +212,9 @@ export default function CommandCenter({ setActiveTab }) {
         />
 
         <StatCard
-          title="Active Leftovers Value"
-          value={formatMoney(kpis?.activeLeftoverValue || 0)}
-          subtitle={`${kpis?.activeLeftoverUnits?.toLocaleString() || 0} units in inventory`}
-          icon={Boxes}
-          color="purple"
-          onClick={() => setActiveTab('leftovers')}
-        />
-
-        <StatCard
           title="Total Monthly Expenses"
           value={formatMoney(kpis?.monthlyExpenses || 0)}
-          subtitle="Rent, Upkeep, Happy Jumps & Mugs"
+          subtitle="Rent, Upkeep & Travel Fees"
           icon={ReceiptText}
           color="rose"
           onClick={() => setActiveTab('expenses')}
@@ -204,10 +227,10 @@ export default function CommandCenter({ setActiveTab }) {
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-emerald-400" />
-              Museum Profit vs Operational Expenses (Daily / Monthly)
+              Daily Realized Income vs Operational Expenses
             </h3>
             <p className="text-xs text-slate-400">
-              Bars show money leaking to upkeep, happy jumps & flights; green line tracks realized museum profits.
+              Green line tracks realized cash inflows (Trades, Points, Crimes, Bazaar); red bars show operational expenses (Rent, Upkeep, Travel).
             </p>
           </div>
         </div>
@@ -237,7 +260,7 @@ export default function CommandCenter({ setActiveTab }) {
               />
               <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
               <Bar dataKey="operational_expense" name="Operational Expenses ($)" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={20} />
-              <Line type="monotone" dataKey="museum_profit" name="Museum Profit ($)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} />
+              <Line type="monotone" dataKey="daily_income" name="Realized Income ($)" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

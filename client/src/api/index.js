@@ -45,7 +45,17 @@ export const deleteInventoryLot = (id) =>
 export const getMasterItems = () => 
   api.get('/inventory/master-items').then(r => r.data);
 
-// 5. Personal Expenses & Vault Tracker
+// 5. Income Ledger
+export const getIncome = (params) => 
+  api.get('/income', { params }).then(r => r.data);
+
+export const logIncome = (payload) => 
+  api.post('/income', payload).then(r => r.data);
+
+export const deleteIncome = (id) => 
+  api.delete(`/income/${id}`).then(r => r.data);
+
+// 6. Personal Expenses & Vault Tracker
 export const getExpenses = (params) => 
   api.get('/expenses', { params }).then(r => r.data);
 
