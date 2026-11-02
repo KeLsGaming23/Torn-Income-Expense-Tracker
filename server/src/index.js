@@ -590,7 +590,6 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-});
 
 // Health check
 app.get('/health', (req, res) => {
