@@ -209,12 +209,16 @@ export class InventoryService {
       const marketValue = Number(master.market_value || 0);
       const totalItemValue = invItem.amount * marketValue;
 
-      // Pricing Recommendations
-      const fastTurnoverPrice = Math.max(1, marketValue - 1); // Undercut by $1
+      // Pricing Recommendations (Market Base & Profit Markups)
       const marketPrice = marketValue;
-      const patientPrice = Math.round(marketValue * 1.02); // +2% premium
+      const markup2Pct = Math.round(marketValue * 1.02);
+      const markup3Pct = Math.round(marketValue * 1.03);
+      const markup4Pct = Math.round(marketValue * 1.04);
+      const markup5Pct = Math.round(marketValue * 1.05);
+      const markup6Pct = Math.round(marketValue * 1.06);
+      const markup7Pct = Math.round(marketValue * 1.07);
 
-      const projectedRevenue = invItem.amount * fastTurnoverPrice;
+      const projectedRevenue = invItem.amount * marketPrice;
       const netProfit = projectedRevenue - totalItemCost;
       const roiPct = totalItemCost > 0 ? (netProfit / totalItemCost) * 100 : 100;
 
@@ -236,9 +240,13 @@ export class InventoryService {
         originBadge,
         batches: lotBreakdown,
         pricing: {
-          fastTurnoverPrice,
           marketPrice,
-          patientPrice
+          markup2Pct,
+          markup3Pct,
+          markup4Pct,
+          markup5Pct,
+          markup6Pct,
+          markup7Pct
         },
         projectedRevenue,
         netProfit,

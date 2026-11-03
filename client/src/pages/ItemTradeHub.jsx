@@ -164,9 +164,15 @@ export default function ItemTradeHub() {
   const [invLoading, setInvLoading] = useState(false);
   const [invCategoryFilter, setInvCategoryFilter] = useState('all');
   const [invSearch, setInvSearch] = useState('');
-  const [pricingMode, setPricingMode] = useState('fast'); // 'fast' (-$1) | 'market' | 'patient' (+2%)
+  const [pricingMarkup, setPricingMarkup] = useState(2); // 0 (Market Value) | 2 | 3 | 4 | 5 | 6 | 7% profit markup
   const [invSortField, setInvSortField] = useState('profit'); // 'name' | 'stock' | 'cost' | 'market' | 'bazaarPrice' | 'profit'
   const [invSortOrder, setInvSortOrder] = useState('desc'); // 'asc' | 'desc'
+
+  const calculateItemBazaarPrice = (marketValue, markupPct) => {
+    const base = Number(marketValue || 0);
+    if (!markupPct || markupPct <= 0) return base;
+    return Math.round(base * (1 + markupPct / 100));
+  };
 
   const handleInvSort = (field) => {
     if (invSortField === field) {
@@ -229,30 +235,14 @@ export default function ItemTradeHub() {
       } else if (invSortField === 'market') {
         comparison = (a.marketValue || 0) - (b.marketValue || 0);
       } else if (invSortField === 'bazaarPrice') {
-        const priceA = pricingMode === 'fast'
-          ? (a.pricing?.fastTurnoverPrice || a.marketValue || 0)
-          : pricingMode === 'patient'
-          ? (a.pricing?.patientPrice || a.marketValue || 0)
-          : (a.pricing?.marketPrice || a.marketValue || 0);
-        const priceB = pricingMode === 'fast'
-          ? (b.pricing?.fastTurnoverPrice || b.marketValue || 0)
-          : pricingMode === 'patient'
-          ? (b.pricing?.patientPrice || b.marketValue || 0)
-          : (b.pricing?.marketPrice || b.marketValue || 0);
+        const priceA = calculateItemBazaarPrice(a.marketValue, pricingMarkup);
+        const priceB = calculateItemBazaarPrice(b.marketValue, pricingMarkup);
         comparison = priceA - priceB;
       } else if (invSortField === 'profit') {
-        const priceA = pricingMode === 'fast'
-          ? (a.pricing?.fastTurnoverPrice || a.marketValue || 0)
-          : pricingMode === 'patient'
-          ? (a.pricing?.patientPrice || a.marketValue || 0)
-          : (a.pricing?.marketPrice || a.marketValue || 0);
+        const priceA = calculateItemBazaarPrice(a.marketValue, pricingMarkup);
         const profitA = ((a.amount || 0) * priceA) - (a.totalItemCost || 0);
 
-        const priceB = pricingMode === 'fast'
-          ? (b.pricing?.fastTurnoverPrice || b.marketValue || 0)
-          : pricingMode === 'patient'
-          ? (b.pricing?.patientPrice || b.marketValue || 0)
-          : (b.pricing?.marketPrice || b.marketValue || 0);
+        const priceB = calculateItemBazaarPrice(b.marketValue, pricingMarkup);
         const profitB = ((b.amount || 0) * priceB) - (b.totalItemCost || 0);
 
         comparison = profitA - profitB;
@@ -260,19 +250,15 @@ export default function ItemTradeHub() {
 
       return invSortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [inventoryData, invCategoryFilter, invSearch, invSortField, invSortOrder, pricingMode]);
+  }, [inventoryData, invCategoryFilter, invSearch, invSortField, invSortOrder, pricingMarkup]);
 
-  // Calculate dynamic totals based on chosen pricing mode (Fast / Market / Patient)
+  // Calculate dynamic totals based on chosen pricing markup (Market Base or +2% to +7%)
   const inventoryTotals = useMemo(() => {
     if (!filteredInventoryItems.length) return { revenue: 0, cost: 0, profit: 0, roi: 0 };
     let rev = 0;
     let cost = 0;
     filteredInventoryItems.forEach(item => {
-      const price = pricingMode === 'fast'
-        ? (item?.pricing?.fastTurnoverPrice || item?.marketValue || 0)
-        : pricingMode === 'patient'
-        ? (item?.pricing?.patientPrice || item?.marketValue || 0)
-        : (item?.pricing?.marketPrice || item?.marketValue || 0);
+      const price = calculateItemBazaarPrice(item.marketValue, pricingMarkup);
       rev += (item.amount || 0) * price;
       cost += (item.totalItemCost || 0);
     });
@@ -282,7 +268,7 @@ export default function ItemTradeHub() {
       profit: rev - cost,
       roi: cost > 0 ? ((rev - cost) / cost) * 100 : (rev > 0 ? 100 : 0)
     };
-  }, [filteredInventoryItems, pricingMode]);
+  }, [filteredInventoryItems, pricingMarkup]);
 
   // =========================================================================
   // SUB-TAB 3: MASTER ITEM CATALOG BROWSER STATE
@@ -745,35 +731,34 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h4 className="font-bold text-white text-sm">Suggested Bazaar Pricing Strategy</h4>
-                <p className="text-xs text-slate-400">Select how you want to price your inventory when listing on your Bazaar</p>
+                <p className="text-xs text-slate-400">Select market baseline or profit markup (+2% to +7%) to maximize income</p>
               </div>
 
               {/* Pricing Strategy Pills */}
-              <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-2xl border border-slate-800">
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
                 <button
-                  onClick={() => setPricingMode('fast')}
+                  onClick={() => setPricingMarkup(0)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    pricingMode === 'fast' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                    pricingMarkup === 0 
+                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20' 
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                   }`}
                 >
-                  Fast Turnover (-$1 Undercut)
+                  Market Value (0%)
                 </button>
-                <button
-                  onClick={() => setPricingMode('market')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    pricingMode === 'market' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Market Average
-                </button>
-                <button
-                  onClick={() => setPricingMode('patient')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    pricingMode === 'patient' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Patient Seller (+2%)
-                </button>
+                {[2, 3, 4, 5, 6, 7].map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => setPricingMarkup(pct)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono transition-all ${
+                      pricingMarkup === pct 
+                        ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`}
+                  >
+                    +{pct}%
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -930,11 +915,7 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                     </tr>
                   ) : (
                     filteredInventoryItems.map((item) => {
-                      const sellingPrice = pricingMode === 'fast'
-                        ? (item.pricing?.fastTurnoverPrice || item.marketValue || 0)
-                        : pricingMode === 'patient'
-                        ? (item.pricing?.patientPrice || item.marketValue || 0)
-                        : (item.pricing?.marketPrice || item.marketValue || 0);
+                      const sellingPrice = calculateItemBazaarPrice(item.marketValue, pricingMarkup);
                       const itemRev = (item.amount || 0) * sellingPrice;
                       const itemCost = Number(item.totalItemCost || 0);
                       const itemNet = itemRev - itemCost;
@@ -1002,6 +983,9 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                             <span className="font-bold text-sky-400 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-800/40">
                               ${sellingPrice.toLocaleString()}
                             </span>
+                            {pricingMarkup > 0 && (
+                              <span className="text-[9px] text-sky-400/80 block font-mono mt-0.5">+{pricingMarkup}%</span>
+                            )}
                           </td>
 
                           {/* Projected Profit */}
