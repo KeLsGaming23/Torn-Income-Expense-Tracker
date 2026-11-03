@@ -18,11 +18,13 @@ import {
   Table as TableIcon,
   LayoutGrid,
   Calculator,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCw,
+  Plane
 } from 'lucide-react';
 
 export default function MuseumSetBuilder({ setActiveTab }) {
-  const { showToast, refresh } = useTornData();
+  const { showToast, refresh, syncing } = useTornData();
 
   // Active Set Type
   const [setType, setSetType] = useState('plushie'); // 'plushie' or 'flower'
@@ -196,34 +198,55 @@ export default function MuseumSetBuilder({ setActiveTab }) {
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold text-white text-sm uppercase tracking-wider flex items-center gap-2">
-              <span>Set Readiness Breakdown ({simulation?.items?.length || 0} items)</span>
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-white text-sm uppercase tracking-wider">
+                Set Readiness Breakdown ({simulation?.items?.length || 0} items)
+              </h3>
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                <ShieldCheck className="h-3 w-3" />
+                <span>Strict API Sync</span>
+              </span>
+            </div>
             <p className="text-xs text-slate-400">
-              Showing exact real batches in stock with no averaged distortion
+              Sorted from shortest to longest travel time • Live inventory synchronized directly from Torn API
             </p>
           </div>
 
-          {/* Table vs Grid Toggle */}
-          <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 shrink-0">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
+              onClick={async () => {
+                await refresh(false);
+                await fetchSimulation();
+              }}
+              disabled={syncing || loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 transition-all disabled:opacity-50"
+              title="Poll Torn API v2 to update inventory immediately"
             >
-              <TableIcon className="h-3.5 w-3.5" />
-              <span>Table View (Real Batches)</span>
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing || loading ? 'animate-spin text-emerald-400' : 'text-slate-400'}`} />
+              <span>{syncing ? 'Syncing...' : 'Sync Live Inventory'}</span>
             </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'grid' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              <span>Cards</span>
-            </button>
+
+            {/* Table vs Grid Toggle */}
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 shrink-0">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'table' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <TableIcon className="h-3.5 w-3.5" />
+                <span>Table</span>
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === 'grid' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Cards</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -234,7 +257,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                   <tr>
-                    <th className="py-3.5 px-4 font-bold">Item & Country</th>
+                    <th className="py-3.5 px-4 font-bold">Item & Travel Time (Shortest to Longest)</th>
                     <th className="py-3.5 px-4 text-center font-bold">Stock Owned</th>
                     <th className="py-3.5 px-4 font-bold">Real Batches in Vault (Exact Cost Basis)</th>
                     <th className="py-3.5 px-4 text-right font-bold">FIFO Cost for {setCount} Set(s)</th>
@@ -261,7 +284,18 @@ export default function MuseumSetBuilder({ setActiveTab }) {
                               <span className="text-base">{setType === 'flower' ? '🌸' : '🧸'}</span>
                               <div>
                                 <div className="font-extrabold text-white text-xs">{item.name}</div>
-                                <div className="text-[10px] text-slate-400">{item.country}</div>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
+                                  <span>{item.country}</span>
+                                  {item.flightFormatted && (
+                                    <>
+                                      <span className="text-slate-600">•</span>
+                                      <span className="font-mono text-sky-400 bg-sky-950/40 px-1.5 py-0.2 rounded border border-sky-800/40 inline-flex items-center gap-1">
+                                        <Plane className="h-2.5 w-2.5" />
+                                        <span>{item.flightFormatted}</span>
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
@@ -411,9 +445,17 @@ export default function MuseumSetBuilder({ setActiveTab }) {
                 </div>
 
                 <div className="space-y-1.5 text-[11px] text-slate-400">
-                  <div className="flex justify-between">
-                    <span>Origin:</span>
-                    <span className="text-slate-300 font-medium">{item.country}</span>
+                  <div className="flex justify-between items-center">
+                    <span>Origin / Flight:</span>
+                    <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                      <span>{item.country}</span>
+                      {item.flightFormatted && (
+                        <span className="text-[10px] font-mono text-sky-400 bg-sky-950/50 px-1.5 py-0.5 rounded border border-sky-800/40 inline-flex items-center gap-1">
+                          <Plane className="h-2.5 w-2.5" />
+                          <span>{item.flightFormatted}</span>
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 block mb-0.5">Batches in Vault:</span>

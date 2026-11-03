@@ -6,8 +6,117 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export class TornSyncService {
+  static lastLiveInventorySync = 0;
+
   static getApiKey() {
     return process.env.TORN_API_KEY || '';
+  }
+
+  /**
+   * Strictly synchronize local inventory lots to match live Torn API v2 /user/inventory
+   * Authoritative source of truth for Plushie and Flower stock.
+   */
+  static async syncLiveInventory(apiKey = this.getApiKey(), force = false) {
+    if (!apiKey) return { success: false, reason: 'No API key' };
+
+    // Throttle to avoid exceeding Torn rate limit unless forced
+    const now = Date.now();
+    if (!force && (now - this.lastLiveInventorySync < 20000)) {
+      return { success: true, cached: true };
+    }
+
+    try {
+      const headers = {
+        'Authorization': `ApiKey ${apiKey}`,
+        'User-Agent': 'TornLedger/1.0'
+      };
+
+      // Fetch live plushies and flowers in parallel from API v2
+      const [plushieRes, flowerRes] = await Promise.allSettled([
+        axios.get(`https://api.torn.com/v2/user/inventory?cat=Plushie&key=${apiKey}`, { headers, timeout: 15000 }),
+        axios.get(`https://api.torn.com/v2/user/inventory?cat=Flower&key=${apiKey}`, { headers, timeout: 15000 })
+      ]);
+
+      const liveItemMap = new Map();
+      let hasPlushieData = false;
+      let hasFlowerData = false;
+
+      if (plushieRes.status === 'fulfilled' && plushieRes.value.data?.inventory?.items) {
+        hasPlushieData = true;
+        for (const item of plushieRes.value.data.inventory.items) {
+          liveItemMap.set(Number(item.id), Number(item.amount || 0));
+        }
+      }
+
+      if (flowerRes.status === 'fulfilled' && flowerRes.value.data?.inventory?.items) {
+        hasFlowerData = true;
+        for (const item of flowerRes.value.data.inventory.items) {
+          liveItemMap.set(Number(item.id), Number(item.amount || 0));
+        }
+      }
+
+      // If both requests failed, don't adjust database
+      if (!hasPlushieData && !hasFlowerData) {
+        console.warn('[LiveSync] Torn API v2 inventory requests failed, preserving stock');
+        return { success: false, reason: 'API call failed' };
+      }
+
+      let adjustments = 0;
+
+      // Reconcile each master museum item against live API ground truth
+      for (const [itemId, masterItem] of ALL_MUSEUM_ITEMS_MAP.entries()) {
+        const isPlushie = masterItem.type === 'plushie';
+        if (isPlushie && !hasPlushieData) continue;
+        if (!isPlushie && !hasFlowerData) continue;
+
+        const liveQty = liveItemMap.get(itemId) || 0;
+
+        // Get currently remaining quantity in lots
+        const [lots] = await pool.query(
+          `SELECT id, qty_remaining, unit_cost 
+           FROM inventory_lots 
+           WHERE item_id = ? AND qty_remaining > 0 
+           ORDER BY purchased_at DESC, id DESC`,
+          [itemId]
+        );
+
+        const currentLotTotal = lots.reduce((acc, l) => acc + Number(l.qty_remaining), 0);
+
+        if (currentLotTotal > liveQty) {
+          // Player has FEWER items in Torn (e.g. converted in museum, traded, or consumed)
+          let excess = currentLotTotal - liveQty;
+          for (const lot of lots) {
+            if (excess <= 0) break;
+            const take = Math.min(Number(lot.qty_remaining), excess);
+            await pool.query(
+              `UPDATE inventory_lots SET qty_remaining = qty_remaining - ? WHERE id = ?`,
+              [take, lot.id]
+            );
+            excess -= take;
+            adjustments++;
+          }
+        } else if (currentLotTotal < liveQty) {
+          // Player has MORE items in Torn than recorded
+          const deficit = liveQty - currentLotTotal;
+          const unitCost = lots[0]?.unit_cost ? Number(lots[0].unit_cost) : masterItem.buyPrice;
+
+          await pool.query(
+            `INSERT INTO inventory_lots 
+             (torn_log_id, item_id, item_name, item_type, source, qty_initial, qty_remaining, unit_cost, purchased_at)
+             VALUES (NULL, ?, ?, ?, 'manual', ?, ?, ?, NOW())`,
+            [itemId, masterItem.name, masterItem.type, deficit, deficit, unitCost]
+          );
+          adjustments++;
+        }
+      }
+
+      this.lastLiveInventorySync = Date.now();
+      console.log(`[LiveSync] Strictly synced inventory with Torn API v2 (${adjustments} adjustments made)`);
+      return { success: true, adjustments, liveCounts: Object.fromEntries(liveItemMap) };
+    } catch (err) {
+      console.warn('[LiveSync] Error strictly syncing live inventory:', err.message);
+      return { success: false, error: err.message };
+    }
   }
 
   /**
@@ -48,6 +157,11 @@ export class TornSyncService {
     } catch (e) {
       console.warn('[Sync] Could not fetch user/faction data:', e.message);
     }
+
+    // Synchronize inventory lots directly with Torn API v2 live inventory
+    await this.syncLiveInventory(apiKey, true).catch(err => {
+      console.warn('[Sync] Live inventory sync notice:', err.message);
+    });
 
     // 3. Fetch Live Points Market
     let lowestPointsMarketListing = 45000;

@@ -1,12 +1,14 @@
 import pool from '../config/db.js';
 import { PLUSHIE_SET, FLOWER_SET } from '../constants/masterItems.js';
+import { TornSyncService } from './tornSyncService.js';
 
 export class FIFOEngine {
   /**
    * Simulate Museum Set Conversion & Pricing Engine
    */
   static async simulate({ setType = 'plushie', setCount = null }) {
-    // Auto-reconcile any duplicate conversions before calculating simulation
+    // Strictly synchronize inventory with Torn API v2 (cached 20s) and reconcile duplicates
+    await TornSyncService.syncLiveInventory().catch(() => {});
     await this.reconcileDuplicates().catch(() => {});
 
     const isFlower = setType.toLowerCase() === 'flower';
