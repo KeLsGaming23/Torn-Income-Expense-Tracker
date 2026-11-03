@@ -22,7 +22,9 @@ import {
   Clock,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { 
   getItemsCatalog, 
@@ -172,6 +174,17 @@ export default function ItemTradeHub() {
     const base = Number(marketValue || 0);
     if (!markupPct || markupPct <= 0) return base;
     return Math.round(base * (1 + markupPct / 100));
+  };
+
+  const [expandedItemBatches, setExpandedItemBatches] = useState(new Set());
+
+  const toggleExpandBatches = (itemId) => {
+    setExpandedItemBatches(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
   };
 
   const handleInvSort = (field) => {
@@ -920,105 +933,178 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                       const itemCost = Number(item.totalItemCost || 0);
                       const itemNet = itemRev - itemCost;
                       const itemRoi = itemCost > 0 ? (itemNet / itemCost) * 100 : 100;
+                      const batchCount = item.batches?.length || 0;
+                      const isExpanded = expandedItemBatches.has(item.id);
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-900/40 transition-colors">
-                          {/* Item & Origin Badge */}
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <img src={item.imageUrl} alt="" className="h-7 w-7 object-contain shrink-0" />
-                              <div>
-                                <div className="font-extrabold text-white text-xs">{item.name}</div>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  <span 
-                                    className={`text-[10px] font-mono px-2 py-0.2 rounded-full font-bold ${
-                                      item.originSource === 'legacy'
-                                        ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
-                                        : item.originSource === 'crime'
-                                        ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
-                                        : item.originSource === 'abroad'
-                                        ? 'bg-sky-950/60 text-sky-300 border border-sky-500/30'
-                                        : item.originSource === 'trade'
-                                        ? 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
-                                        : item.originSource === 'mixed'
-                                        ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/30'
-                                        : 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
-                                    }`}
-                                    title={item.batches?.length > 1 ? item.batches.map(b => `${b.qty}x ${b.source} ($${b.unitCost.toLocaleString()})`).join(' + ') : undefined}
-                                  >
-                                    {item.originBadge}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500">{item.itemType}</span>
+                        <React.Fragment key={item.id}>
+                          <tr className="hover:bg-slate-900/40 transition-colors">
+                            {/* Item & Origin Badge */}
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <img src={item.imageUrl} alt="" className="h-7 w-7 object-contain shrink-0" />
+                                <div>
+                                  <div className="font-extrabold text-white text-xs">{item.name}</div>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span 
+                                      className={`text-[10px] font-mono px-2 py-0.2 rounded-full font-bold ${
+                                        item.originSource === 'legacy'
+                                          ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                                          : item.originSource === 'crime'
+                                          ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
+                                          : item.originSource === 'abroad'
+                                          ? 'bg-sky-950/60 text-sky-300 border border-sky-500/30'
+                                          : item.originSource === 'trade'
+                                          ? 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+                                          : item.originSource === 'mixed'
+                                          ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/30'
+                                          : 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
+                                      }`}
+                                      title={item.batches?.length > 1 ? item.batches.map(b => `${b.qty}x ${b.source} ($${b.unitCost.toLocaleString()})`).join(' + ') : undefined}
+                                    >
+                                      {item.originBadge}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500">{item.itemType}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Stock Owned */}
-                          <td className="py-3 px-3 text-center">
-                            <span className="bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800 text-white font-mono font-bold">
-                              {item.amount}x
-                            </span>
-                          </td>
+                            {/* Stock Owned */}
+                            <td className="py-3 px-3 text-center">
+                              <span className="bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800 text-white font-mono font-bold">
+                                {item.amount}x
+                              </span>
+                            </td>
 
-                          {/* Cost Basis */}
-                          <td className="py-3 px-3 text-right font-mono">
-                            <div className={item.unitCost === 0 ? 'text-emerald-400 font-bold' : 'text-slate-300 font-medium'}>
-                              ${item.unitCost.toLocaleString()}
-                            </div>
-                            {item.unitCost === 0 ? (
-                              <span className="text-[9px] text-emerald-500/80 block uppercase">100% Free</span>
-                            ) : item.batches?.length > 1 ? (
-                              <span className="text-[9px] text-indigo-400/90 block uppercase" title={item.batches.map(b => `${b.qty}x @ $${b.unitCost.toLocaleString()}`).join(' + ')}>Blended</span>
-                            ) : null}
-                          </td>
+                            {/* Cost Basis */}
+                            <td className="py-3 px-3 text-right font-mono">
+                              <div className="flex flex-col items-end gap-1">
+                                <div className={item.unitCost === 0 ? 'text-emerald-400 font-bold' : 'text-slate-200 font-bold'}>
+                                  ${item.unitCost.toLocaleString()}
+                                </div>
+                                {item.unitCost === 0 ? (
+                                  <span className="text-[9px] text-emerald-500/80 font-bold uppercase">100% Free</span>
+                                ) : null}
 
-                          {/* Market Value */}
-                          <td className="py-3 px-4 text-right font-mono font-medium text-slate-300">
-                            ${item.marketValue.toLocaleString()}
-                          </td>
+                                {/* Toggle button for multiple acquisition batches (just like Museum Set Builder) */}
+                                {batchCount > 1 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleExpandBatches(item.id);
+                                    }}
+                                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg border transition-all ${
+                                      isExpanded
+                                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 shadow-sm'
+                                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700/80 hover:text-white'
+                                    }`}
+                                    title="Click to view all acquisition lots in FIFO order"
+                                  >
+                                    <span>+{batchCount - 1} more</span>
+                                    {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
 
-                          {/* Suggested Bazaar Price */}
-                          <td className="py-3 px-4 text-right font-mono">
-                            <span className="font-bold text-sky-400 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-800/40">
-                              ${sellingPrice.toLocaleString()}
-                            </span>
-                            {pricingMarkup > 0 && (
-                              <span className="text-[9px] text-sky-400/80 block font-mono mt-0.5">+{pricingMarkup}%</span>
-                            )}
-                          </td>
+                            {/* Market Value */}
+                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-300">
+                              ${item.marketValue.toLocaleString()}
+                            </td>
 
-                          {/* Projected Profit */}
-                          <td className="py-3 px-4 text-right font-mono">
-                            <div className="font-black text-emerald-400 text-xs">
-                              +${Math.round(itemNet).toLocaleString()}
-                            </div>
-                            <div className="text-[10px] text-teal-300/80 font-normal">
-                              +{Number(itemRoi || 0).toFixed(0)}% ROI
-                            </div>
-                          </td>
+                            {/* Suggested Bazaar Price */}
+                            <td className="py-3 px-4 text-right font-mono">
+                              <span className="font-bold text-sky-400 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-800/40">
+                                ${sellingPrice.toLocaleString()}
+                              </span>
+                              {pricingMarkup > 0 && (
+                                <span className="text-[9px] text-sky-400/80 block font-mono mt-0.5">+{pricingMarkup}%</span>
+                              )}
+                            </td>
 
-                          {/* Action Button: Load in Trade Pricer */}
-                          <td className="py-3 px-3 text-center">
-                            <button
-                              onClick={() => {
-                                handleSelectItemForPricer({
-                                  item_id: item.id,
-                                  name: item.name,
-                                  item_type: item.itemType,
-                                  market_value: item.marketValue,
-                                  image_url: item.imageUrl
-                                });
-                                setQuantity(item.amount);
-                                setActiveSubTab('pricer');
-                              }}
-                              className="text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
-                              title="Value in Trade Pricer"
-                            >
-                              Price Buy
-                            </button>
-                          </td>
-                        </tr>
+                            {/* Projected Profit */}
+                            <td className="py-3 px-4 text-right font-mono">
+                              <div className="font-black text-emerald-400 text-xs">
+                                +${Math.round(itemNet).toLocaleString()}
+                              </div>
+                              <div className="text-[10px] text-teal-300/80 font-normal">
+                                +{Number(itemRoi || 0).toFixed(0)}% ROI
+                              </div>
+                            </td>
+
+                            {/* Action Button: Load in Trade Pricer */}
+                            <td className="py-3 px-3 text-center">
+                              <button
+                                onClick={() => {
+                                  handleSelectItemForPricer({
+                                    item_id: item.id,
+                                    name: item.name,
+                                    item_type: item.itemType,
+                                    market_value: item.marketValue,
+                                    image_url: item.imageUrl
+                                  });
+                                  setQuantity(item.amount);
+                                  setActiveSubTab('pricer');
+                                }}
+                                className="text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
+                                title="Value in Trade Pricer"
+                              >
+                                Price Buy
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* Expandable FIFO Queue Sub-Row */}
+                          {isExpanded && batchCount > 1 && (
+                            <tr className="bg-slate-950/80 border-b border-slate-800">
+                              <td colSpan="7" className="p-3.5 pl-6 sm:pl-10">
+                                <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 space-y-2.5 shadow-inner">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
+                                    <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                                      <Layers className="h-3.5 w-3.5 text-blue-400" />
+                                      <span>Complete FIFO Queue for {item.name}</span>
+                                      <span className="text-slate-400 font-normal">
+                                        ({batchCount} individual lots • {item.amount} total units • Blended Avg: ${item.unitCost.toLocaleString()}/ea)
+                                      </span>
+                                    </span>
+                                    <span className="text-slate-400 text-[11px] font-mono">
+                                      Consumed in order: Batch #1 → Batch #{batchCount}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pt-1">
+                                    {item.batches.map((b, idx) => (
+                                      <div 
+                                        key={idx}
+                                        className={`p-2.5 rounded-xl border text-xs font-mono flex flex-col justify-between ${
+                                          idx === 0 
+                                            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 shadow-sm' 
+                                            : 'bg-slate-950/90 border-slate-800 text-slate-300'
+                                        }`}
+                                      >
+                                        <div className="flex justify-between items-center text-[10px] mb-1">
+                                          <span className={idx === 0 ? 'font-bold text-emerald-400' : 'text-slate-500'}>
+                                            Lot #{idx + 1} {idx === 0 && '(Next up)'}
+                                          </span>
+                                          <span className="text-slate-400 uppercase text-[9px] px-1.5 py-0.2 rounded bg-slate-800">
+                                            {b.source}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between items-baseline pt-1">
+                                          <span className="font-black text-white text-xs">{b.qty} units</span>
+                                          <span className="text-slate-200 font-bold">
+                                            ${Number(b.unitCost || 0).toLocaleString()}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}

@@ -101,12 +101,12 @@ export class InventoryService {
     const masterMap = new Map();
     masterRows.forEach(r => masterMap.set(r.item_id, r));
 
-    // Fetch existing inventory lots for cost basis and origin tracking
+    // Fetch existing inventory lots for cost basis and origin tracking (ordered chronologically FIFO)
     const [lotRows] = await pool.query(
       `SELECT item_id, qty_remaining, unit_cost, source, purchased_at 
        FROM inventory_lots 
        WHERE item_id IN (?) AND qty_remaining > 0 
-       ORDER BY purchased_at DESC`,
+       ORDER BY purchased_at ASC, id ASC`,
       [itemIds]
     );
 
@@ -168,7 +168,8 @@ export class InventoryService {
       if (accountedQty < invItem.amount) {
         const remaining = invItem.amount - accountedQty;
         distinctSources.add('legacy');
-        lotBreakdown.push({
+        // Place pre-Oct 1 legacy at the beginning of the queue because it is the oldest
+        lotBreakdown.unshift({
           qty: remaining,
           source: 'legacy',
           unitCost: 0
