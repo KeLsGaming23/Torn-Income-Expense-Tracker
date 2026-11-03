@@ -943,15 +943,22 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                               <div>
                                 <div className="font-extrabold text-white text-xs">{item.name}</div>
                                 <div className="flex items-center gap-1.5 mt-0.5">
-                                  <span className={`text-[10px] font-mono px-2 py-0.2 rounded-full font-bold ${
-                                    item.originSource === 'legacy'
-                                      ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
-                                      : item.originSource === 'crime'
-                                      ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
-                                      : item.originSource === 'abroad'
-                                      ? 'bg-sky-950/60 text-sky-300 border border-sky-500/30'
-                                      : 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
-                                  }`}>
+                                  <span 
+                                    className={`text-[10px] font-mono px-2 py-0.2 rounded-full font-bold ${
+                                      item.originSource === 'legacy'
+                                        ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                                        : item.originSource === 'crime'
+                                        ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
+                                        : item.originSource === 'abroad'
+                                        ? 'bg-sky-950/60 text-sky-300 border border-sky-500/30'
+                                        : item.originSource === 'trade'
+                                        ? 'bg-amber-950/60 text-amber-300 border border-amber-500/30'
+                                        : item.originSource === 'mixed'
+                                        ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/30'
+                                        : 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
+                                    }`}
+                                    title={item.batches?.length > 1 ? item.batches.map(b => `${b.qty}x ${b.source} ($${b.unitCost.toLocaleString()})`).join(' + ') : undefined}
+                                  >
                                     {item.originBadge}
                                   </span>
                                   <span className="text-[10px] text-slate-500">{item.itemType}</span>
@@ -972,9 +979,11 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                             <div className={item.unitCost === 0 ? 'text-emerald-400 font-bold' : 'text-slate-300 font-medium'}>
                               ${item.unitCost.toLocaleString()}
                             </div>
-                            {item.unitCost === 0 && (
+                            {item.unitCost === 0 ? (
                               <span className="text-[9px] text-emerald-500/80 block uppercase">100% Free</span>
-                            )}
+                            ) : item.batches?.length > 1 ? (
+                              <span className="text-[9px] text-indigo-400/90 block uppercase" title={item.batches.map(b => `${b.qty}x @ $${b.unitCost.toLocaleString()}`).join(' + ')}>Blended</span>
+                            ) : null}
                           </td>
 
                           {/* Market Value */}

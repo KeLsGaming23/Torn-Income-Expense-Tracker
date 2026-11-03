@@ -124,45 +124,79 @@ export class InventoryService {
       const master = masterMap.get(id) || {};
       const lots = lotsByItem.get(id) || [];
 
-      let unitCost = 0;
+      let totalItemCost = 0;
+      let accountedQty = 0;
+      const distinctSources = new Set();
+      const lotBreakdown = [];
+
+      // Walk through lots chronologically or by remaining stock to calculate blended multi-lot cost pool
+      if (lots.length > 0) {
+        for (const lot of lots) {
+          if (accountedQty >= invItem.amount) break;
+          const take = Math.min(Number(lot.qty_remaining || 0), invItem.amount - accountedQty);
+          if (take <= 0) continue;
+
+          const purchaseDate = new Date(lot.purchased_at);
+          const isFree = purchaseDate < cutoffDate || lot.source === 'legacy' || lot.source === 'crime';
+          const lotUnitCost = isFree ? 0 : Number(lot.unit_cost || 0);
+
+          totalItemCost += take * lotUnitCost;
+          accountedQty += take;
+
+          const srcType = isFree ? (lot.source === 'crime' ? 'crime' : 'legacy') : lot.source;
+          distinctSources.add(srcType);
+          lotBreakdown.push({
+            qty: take,
+            source: srcType,
+            unitCost: lotUnitCost
+          });
+        }
+      }
+
+      // If user holds more inventory than tracked in post-Oct 1 lots, excess is pre-Oct 1 legacy ($0 cost basis)
+      if (accountedQty < invItem.amount) {
+        const remaining = invItem.amount - accountedQty;
+        distinctSources.add('legacy');
+        lotBreakdown.push({
+          qty: remaining,
+          source: 'legacy',
+          unitCost: 0
+        });
+        accountedQty += remaining;
+      }
+
+      // Blended weighted average unit cost across all active batches
+      const unitCost = invItem.amount > 0 ? Math.round(totalItemCost / invItem.amount) : 0;
+
+      // Determine descriptive origin badge
       let originSource = 'legacy';
       let originBadge = 'Legacy (Pre-Oct 1)';
 
-      if (lots.length > 0) {
-        const lot = lots[0];
-        const purchaseDate = new Date(lot.purchased_at);
-        if (purchaseDate < cutoffDate || lot.source === 'legacy') {
-          unitCost = 0;
-          originSource = 'legacy';
-          originBadge = 'Legacy (Pre-Oct 1)';
-        } else if (lot.source === 'crime') {
-          unitCost = 0;
-          originSource = 'crime';
-          originBadge = 'Crimes 2.0 Loot';
-        } else {
-          unitCost = Number(lot.unit_cost);
-          originSource = lot.source;
-          originBadge = lot.source === 'abroad' ? 'Travel Abroad' : lot.source === 'bazaar' ? 'Player Bazaar' : 'Player Trade';
-        }
+      if (distinctSources.size > 1) {
+        originSource = 'mixed';
+        originBadge = 'Multi-Source (Blended)';
+      } else if (distinctSources.has('abroad')) {
+        originSource = 'abroad';
+        originBadge = 'Travel Abroad';
+      } else if (distinctSources.has('trade')) {
+        originSource = 'trade';
+        originBadge = 'Player Trade (90%)';
+      } else if (distinctSources.has('bazaar')) {
+        originSource = 'bazaar';
+        originBadge = 'Player Bazaar';
+      } else if (distinctSources.has('crime')) {
+        originSource = 'crime';
+        originBadge = 'Crimes 2.0 Loot';
+      } else if (distinctSources.has('market')) {
+        originSource = 'market';
+        originBadge = 'Item Market';
       } else {
-        // No lot exists yet - treat as pre-October 1 legacy / crime loot ($0 cost basis)
-        unitCost = 0;
         originSource = 'legacy';
-        originBadge = 'Legacy / Crime Loot';
-
-        // Auto-persist into inventory_lots as pre-Oct 1 legacy
-        pool.query(
-          `INSERT INTO inventory_lots 
-           (torn_log_id, item_id, item_name, item_type, source, qty_initial, qty_remaining, unit_cost, purchased_at)
-           VALUES (NULL, ?, ?, ?, 'legacy', ?, ?, 0, '2026-09-30 23:59:59')
-           ON DUPLICATE KEY UPDATE qty_remaining = VALUES(qty_remaining)`,
-          [id, invItem.name, master.item_type || invItem.category, invItem.amount, invItem.amount]
-        ).catch(() => {});
+        originBadge = 'Legacy (Pre-Oct 1)';
       }
 
       const marketValue = Number(master.market_value || 0);
       const totalItemValue = invItem.amount * marketValue;
-      const totalItemCost = invItem.amount * unitCost;
 
       // Pricing Recommendations
       const fastTurnoverPrice = Math.max(1, marketValue - 1); // Undercut by $1
@@ -189,6 +223,7 @@ export class InventoryService {
         totalItemValue,
         originSource,
         originBadge,
+        batches: lotBreakdown,
         pricing: {
           fastTurnoverPrice,
           marketPrice,
