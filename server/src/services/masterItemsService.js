@@ -106,7 +106,7 @@ export class MasterItemsService {
   /**
    * Search and filter cached master items
    */
-  static async searchCatalog({ query = '', type = '', sortBy = 'market_value', sortDir = 'DESC', limit = 50, offset = 0 }) {
+  static async searchCatalog({ query = '', type = '', sortBy = 'market_value', sortDir = 'DESC', limit = 50, offset = 0, tradeableOnly = false }) {
     // Check if table is empty; if so, trigger auto-sync from Torn API
     try {
       const [tableCount] = await pool.query(`SELECT COUNT(*) AS count FROM master_items_cache`);
@@ -136,6 +136,10 @@ export class MasterItemsService {
     if (type && type.trim().length > 0 && type.toLowerCase() !== 'all') {
       whereClauses.push('item_type = ?');
       params.push(type.trim());
+    }
+
+    if (tradeableOnly === true || tradeableOnly === 'true' || tradeableOnly === 1 || tradeableOnly === '1') {
+      whereClauses.push('is_tradeable = 1');
     }
 
     const allowedSortFields = ['market_value', 'name', 'buy_price', 'sell_price', 'circulation', 'item_id'];

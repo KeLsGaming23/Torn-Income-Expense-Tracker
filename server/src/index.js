@@ -293,14 +293,15 @@ app.get('/api/inventory/master-items', (req, res) => {
 // Search master items catalog (all 1,500+ items)
 app.get('/api/items/catalog', async (req, res) => {
   try {
-    const { query, type, sortBy, sortDir, limit, offset } = req.query;
+    const { query, type, sortBy, sortDir, limit, offset, tradeableOnly } = req.query;
     const result = await MasterItemsService.searchCatalog({
       query,
       type,
       sortBy,
       sortDir,
       limit,
-      offset
+      offset,
+      tradeableOnly
     });
     res.json({ success: true, ...result });
   } catch (err) {

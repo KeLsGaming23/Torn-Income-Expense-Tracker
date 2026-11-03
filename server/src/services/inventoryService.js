@@ -61,6 +61,11 @@ export class InventoryService {
 
     for (const { cat, items } of categoryResults) {
       for (const item of items) {
+        // Exclude currently equipped gear (active weapons and worn armor)
+        if (item.equipped === true) continue;
+        // Exclude faction-loaned armory items
+        if (item.faction_owned === true) continue;
+
         const id = Number(item.id);
         const amount = Number(item.amount || 1);
         if (aggregatedItemsMap.has(id)) {
@@ -87,7 +92,7 @@ export class InventoryService {
     }
 
     const [masterRows] = await pool.query(
-      `SELECT item_id, name, item_type, buy_price, sell_price, market_value, image_url 
+      `SELECT item_id, name, item_type, buy_price, sell_price, market_value, image_url, is_tradeable 
        FROM master_items_cache 
        WHERE item_id IN (?)`,
       [itemIds]
@@ -122,6 +127,12 @@ export class InventoryService {
 
     for (const [id, invItem] of aggregatedItemsMap.entries()) {
       const master = masterMap.get(id) || {};
+
+      // Exclude untradeable and unsellable items (Books, Easter Eggs, Collectibles, etc.)
+      if (master.is_tradeable === 0 || master.is_tradeable === false) {
+        continue;
+      }
+
       const lots = lotsByItem.get(id) || [];
 
       let totalItemCost = 0;

@@ -72,7 +72,7 @@ export default function ItemTradeHub() {
     }
     const timer = setTimeout(async () => {
       try {
-        const res = await getItemsCatalog({ query: pricerSearch.trim(), limit: 12 });
+        const res = await getItemsCatalog({ query: pricerSearch.trim(), limit: 12, tradeableOnly: true });
         if (res.success) {
           setPricerCatalogResults(res.items || []);
         }
@@ -293,6 +293,7 @@ export default function ItemTradeHub() {
   const [syncingCatalog, setSyncingCatalog] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogType, setCatalogType] = useState('all');
+  const [catalogTradeableOnly, setCatalogTradeableOnly] = useState(true);
   const [catalogSortBy, setCatalogSortBy] = useState('market_value');
   const [catalogSortDir, setCatalogSortDir] = useState('DESC');
   const [availableTypes, setAvailableTypes] = useState([]);
@@ -307,6 +308,7 @@ export default function ItemTradeHub() {
         type: catalogType !== 'all' ? catalogType : undefined,
         sortBy: catalogSortBy,
         sortDir: catalogSortDir,
+        tradeableOnly: catalogTradeableOnly ? true : undefined,
         limit: pageSize,
         offset: catalogPage * pageSize
       });
@@ -345,7 +347,7 @@ export default function ItemTradeHub() {
     if (activeSubTab === 'catalog') {
       fetchCatalog();
     }
-  }, [activeSubTab, catalogType, catalogSortBy, catalogSortDir, catalogPage]);
+  }, [activeSubTab, catalogType, catalogSortBy, catalogSortDir, catalogPage, catalogTradeableOnly]);
 
   // Debounce catalog search
   useEffect(() => {
@@ -374,6 +376,10 @@ export default function ItemTradeHub() {
               <span className="text-[10px] font-bold text-sky-400 bg-sky-950/60 border border-sky-800/60 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" />
                 <span>Oct 1 Cutoff Active</span>
+              </span>
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1" title="Equipped combat loadout, faction armory loans, and untradeable items like books are hidden from trade/bazaar lists">
+                <ShieldCheck className="h-3 w-3" />
+                <span>Equipped & Untradeable Excluded</span>
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
@@ -1104,9 +1110,25 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                 ))}
               </div>
 
-              {/* Sort Dropdown */}
+              {/* Sort & Filter Controls */}
               <div className="flex items-center gap-2 shrink-0 text-xs">
-                <span className="text-slate-400 text-xs">Sort:</span>
+                <button
+                  onClick={() => {
+                    setCatalogTradeableOnly(prev => !prev);
+                    setCatalogPage(0);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                    catalogTradeableOnly 
+                      ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40 shadow-sm' 
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                  title="Toggle between only tradeable items and all items (including books/collectibles)"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>{catalogTradeableOnly ? 'Tradeable Only' : 'All Items'}</span>
+                </button>
+
+                <span className="text-slate-400 text-xs ml-1">Sort:</span>
                 <select
                   value={catalogSortBy}
                   onChange={(e) => setCatalogSortBy(e.target.value)}
