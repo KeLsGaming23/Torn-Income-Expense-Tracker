@@ -185,6 +185,27 @@ export class TornSyncService {
           );
 
           if (existingConv.length === 0) {
+            // Check if there is a manual conversion already logged around this time for the same set
+            const [recentManual] = await pool.query(
+              `SELECT id FROM point_conversions 
+               WHERE torn_log_id IS NULL 
+                 AND set_type = ? 
+                 AND sets_converted = ? 
+                 AND converted_at >= DATE_SUB(?, INTERVAL 15 MINUTE)
+                 AND converted_at <= DATE_ADD(?, INTERVAL 15 MINUTE)
+               ORDER BY id DESC LIMIT 1`,
+              [setType, setsConverted, logDate, logDate]
+            );
+
+            if (recentManual.length > 0) {
+              await pool.query(
+                `UPDATE point_conversions SET torn_log_id = ? WHERE id = ?`,
+                [logId, recentManual[0].id]
+              );
+              console.log(`[Sync] Linked incoming Museum Exchange log ${logId} to existing manual conversion #${recentManual[0].id}. Deduplication avoided.`);
+              continue;
+            }
+
             let totalCostBasis = 0;
 
             for (const setItem of setItemList) {

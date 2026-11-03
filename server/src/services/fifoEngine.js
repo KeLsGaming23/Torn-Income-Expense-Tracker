@@ -6,6 +6,9 @@ export class FIFOEngine {
    * Simulate Museum Set Conversion & Pricing Engine
    */
   static async simulate({ setType = 'plushie', setCount = null }) {
+    // Auto-reconcile any duplicate conversions before calculating simulation
+    await this.reconcileDuplicates().catch(() => {});
+
     const isFlower = setType.toLowerCase() === 'flower';
     const targetSet = isFlower ? FLOWER_SET : PLUSHIE_SET;
     const cleanSetType = isFlower ? 'flower' : 'plushie';
@@ -279,5 +282,71 @@ export class FIFOEngine {
     } finally {
       conn.release();
     }
+  }
+
+  /**
+   * Reconcile Duplicate Conversions & Restore Double-Deducted Stock
+   */
+  static async reconcileDuplicates(connection = pool) {
+    const [dupes] = await connection.query(`
+      SELECT m.id AS manual_id, a.id AS api_id, m.set_type, m.sets_converted
+      FROM point_conversions m
+      JOIN point_conversions a ON m.set_type = a.set_type 
+        AND m.sets_converted = a.sets_converted
+        AND m.torn_log_id IS NULL 
+        AND a.torn_log_id IS NOT NULL
+        AND ABS(TIMESTAMPDIFF(SECOND, m.converted_at, a.converted_at)) < 900
+    `);
+
+    let restoredItemsCount = 0;
+    const restoredSets = [];
+
+    for (const dupe of dupes) {
+      const isFlower = dupe.set_type === 'flower';
+      const itemsList = isFlower ? FLOWER_SET : PLUSHIE_SET;
+      const countToRestore = Number(dupe.sets_converted);
+
+      for (const setItem of itemsList) {
+        let needed = countToRestore;
+
+        const [lots] = await connection.query(
+          `SELECT id, qty_initial, qty_remaining 
+           FROM inventory_lots 
+           WHERE item_id = ? AND qty_remaining < qty_initial 
+           ORDER BY purchased_at DESC, id DESC`,
+          [setItem.id]
+        );
+
+        for (const lot of lots) {
+          if (needed <= 0) break;
+          const capacity = Number(lot.qty_initial) - Number(lot.qty_remaining);
+          const restore = Math.min(capacity, needed);
+          if (restore > 0) {
+            await connection.query(
+              `UPDATE inventory_lots SET qty_remaining = qty_remaining + ? WHERE id = ?`,
+              [restore, lot.id]
+            );
+            needed -= restore;
+            restoredItemsCount += restore;
+          }
+        }
+      }
+
+      await connection.query(`DELETE FROM point_conversions WHERE id = ?`, [dupe.manual_id]);
+      restoredSets.push({
+        deletedManualId: dupe.manual_id,
+        matchedApiId: dupe.api_id,
+        setType: dupe.set_type,
+        setsConverted: dupe.sets_converted
+      });
+      console.log(`[Reconcile] Restored duplicate ${dupe.sets_converted}x ${dupe.set_type} sets and removed duplicate conversion #${dupe.manual_id}`);
+    }
+
+    return {
+      success: true,
+      restoredDuplicatesCount: dupes.length,
+      restoredItemsCount,
+      restoredSets
+    };
   }
 }

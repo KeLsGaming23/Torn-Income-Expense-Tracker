@@ -116,6 +116,17 @@ app.post('/api/museum/convert', async (req, res) => {
   }
 });
 
+// Reconcile Duplicate Conversions & Self-Heal Stock
+app.post('/api/museum/reconcile', async (req, res) => {
+  try {
+    const result = await FIFOEngine.reconcileDuplicates();
+    res.json(result);
+  } catch (err) {
+    console.error('[Reconcile Error]', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Conversion Runs History
 app.get('/api/museum/conversions', async (req, res) => {
   try {
@@ -631,6 +642,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(` Torn Ledger Server running on port ${PORT}`);
   console.log(` Database: ${dbTarget}`);
   console.log(`====================================================`);
+
+  // Run initial deduplication and reconciliation check
+  FIFOEngine.reconcileDuplicates().catch(err => {
+    console.warn('[Startup Reconcile] Notice:', err.message);
+  });
 
   // Background Auto-Sync Interval
   const syncIntervalSec = parseInt(process.env.SYNC_INTERVAL_SECONDS || '120', 10);
