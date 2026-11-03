@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { simulateMuseumSet, convertMuseumSets } from '../api';
+import { simulateMuseumSet } from '../api';
 import { useTornData } from '../context/TornDataContext';
 import { 
   Sparkles, 
@@ -14,9 +14,11 @@ import {
   Sliders,
   Layers,
   ArrowRight,
+  ExternalLink,
   Table as TableIcon,
   LayoutGrid,
-  Calculator
+  Calculator,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function MuseumSetBuilder({ setActiveTab }) {
@@ -48,7 +50,6 @@ export default function MuseumSetBuilder({ setActiveTab }) {
   // Custom Pricing State
   const [selectedPricingMode, setSelectedPricingMode] = useState('advisable'); // 'minimum', 'advisable', 'aggressive', 'custom'
   const [customPrice, setCustomPrice] = useState(45000);
-  const [submitting, setSubmitting] = useState(false);
 
   const fetchSimulation = async () => {
     try {
@@ -89,27 +90,6 @@ export default function MuseumSetBuilder({ setActiveTab }) {
   const projectedRevenue = activePrice * pointsGenerated;
   const projectedNetProfit = projectedRevenue - totalFifoCost;
   const projectedRoiPct = totalFifoCost > 0 ? (projectedNetProfit / totalFifoCost) * 100 : 0;
-
-  const handleExecuteConversion = async () => {
-    try {
-      setSubmitting(true);
-      const res = await convertMuseumSets({
-        setType,
-        setsToConvert: setCount,
-        salePricePerPoint: activePrice,
-        pointsSold: pointsGenerated // Option to record sale at chosen price
-      });
-      if (res.success) {
-        showToast('success', `Converted ${res.setsConverted} ${setType} sets for ${res.pointsGenerated} points! Net profit: $${Number(res.netProfit).toLocaleString()}`);
-        await fetchSimulation();
-        await refresh(true);
-      }
-    } catch (err) {
-      showToast('error', err.response?.data?.message || err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const formatMoney = (val) => '$' + Number(val || 0).toLocaleString();
 
@@ -463,21 +443,26 @@ export default function MuseumSetBuilder({ setActiveTab }) {
         )}
       </div>
 
-      {/* 3. SET CONVERTER & POINT PRICING MATRIX (PLACED AT BOTTOM FOR EXECUTION) */}
-      <div className="space-y-4 pt-4 border-t border-slate-800/80">
-        <div className="flex items-center justify-between">
+      {/* 3. PROJECTED INCOME & POINT MARKET CALCULATOR (ALL NUMBERS VISIBLE) */}
+      <div className="space-y-5 pt-4 border-t border-slate-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="font-bold text-white text-base flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-emerald-400" />
-              <span>Convert Sets & Sell Museum Points</span>
+              <Calculator className="h-5 w-5 text-emerald-400" />
+              <span>Projected Income & Point Market Calculator</span>
             </h3>
             <p className="text-xs text-slate-400">
-              Execute FIFO point conversion when you are ready to sell complete sets
+              Calculate exact profit, FIFO spend, breakeven, and net income for your sets
             </p>
           </div>
-          <span className="text-xs bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-slate-300">
-            Available to convert: <strong className="text-emerald-400 font-mono">{simulation?.maxSets || 0} Sets</strong>
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-slate-300">
+              Available in Stock: <strong className="text-emerald-400 font-mono">{simulation?.maxSets || 0} Sets</strong>
+            </span>
+            <span className="text-xs bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-slate-300">
+              Yield: <strong className="text-amber-400 font-mono">{(simulation?.maxSets || 0) * 10} Points</strong>
+            </span>
+          </div>
         </div>
 
         {/* Interactive Set Calculator Slider */}
@@ -486,23 +471,37 @@ export default function MuseumSetBuilder({ setActiveTab }) {
             <div>
               <h4 className="font-bold text-white text-sm flex items-center gap-2">
                 <Sliders className="h-4 w-4 text-emerald-400" />
-                Choose How Many Sets to Convert:
+                Select Sets to Project:
               </h4>
               <p className="text-xs text-slate-400">
-                You can exchange up to <strong className="text-emerald-400">{simulation?.maxSets || 0} sets</strong> right now.
+                You have enough items in stock to complete <strong className="text-emerald-400">{simulation?.maxSets || 0} sets</strong> right now.
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="text-3xl font-black font-mono text-emerald-400">
-                {setCount} <span className="text-sm font-semibold text-slate-400">Sets</span>
-              </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSetCount(1)}
+                className="bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 px-3 py-1.5 rounded-xl border border-slate-800"
+              >
+                1 Set
+              </button>
+              {simulation?.maxSets > 1 && (
+                <button
+                  onClick={() => setSetCount(Math.max(1, Math.floor(simulation.maxSets / 2)))}
+                  className="bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 px-3 py-1.5 rounded-xl border border-slate-800"
+                >
+                  Half ({Math.max(1, Math.floor(simulation.maxSets / 2))})
+                </button>
+              )}
               <button
                 onClick={() => setSetCount(Math.max(1, simulation?.maxSets || 1))}
-                className="bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700"
+                className="bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-400 px-3 py-1.5 rounded-xl border border-slate-700"
               >
-                Set Max ({simulation?.maxSets || 0})
+                Max ({simulation?.maxSets || 0})
               </button>
+              <span className="text-2xl font-black font-mono text-emerald-400 ml-2">
+                {setCount} <span className="text-xs font-semibold text-slate-400">Sets</span>
+              </span>
             </div>
           </div>
 
@@ -517,35 +516,34 @@ export default function MuseumSetBuilder({ setActiveTab }) {
 
           <div className="flex justify-between text-[11px] text-slate-500 font-mono">
             <span>1 Set (10 Pts)</span>
-            <span>Target: {pointsGenerated} Museum Points</span>
+            <span className="text-slate-300 font-semibold">Generating {pointsGenerated} Museum Points</span>
             <span>Max: {simulation?.maxSets || 1} Sets</span>
           </div>
         </div>
 
-        {/* Pricing & Profit Matrix Card */}
+        {/* Pricing Strategy Selector */}
         <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <div className="flex items-center gap-1.5">
-                <h4 className="font-bold text-white text-base">Point Pricing & Profit Matrix</h4>
+                <h4 className="font-bold text-white text-base">Point Pricing Strategy</h4>
                 <span title="The Breakeven point is the exact FIFO item cost divided by 10 points. Anything above this is pure profit." className="text-slate-400 cursor-help">
                   <HelpCircle className="h-4 w-4" />
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Total FIFO Cost for {setCount} set(s): <strong className="text-slate-200 font-mono">{formatMoney(totalFifoCost)}</strong> • Breakeven: <strong className="text-amber-400 font-mono">${simulation?.breakevenPerPoint?.toFixed(2)} / pt</strong>
+                Choose a pricing preset or enter a custom target price per point
               </p>
             </div>
 
             <div className="bg-slate-900 rounded-xl px-3 py-1.5 border border-slate-800 text-xs text-slate-300">
-              <span>Points to Generate: </span>
+              <span>Points Yield: </span>
               <strong className="text-amber-400 font-mono font-extrabold">{pointsGenerated} Points</strong>
             </div>
           </div>
 
           {/* 3 Preset Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            
             {/* Preset 1: Fast Turnover (+2%) */}
             <div
               onClick={() => setSelectedPricingMode('minimum')}
@@ -556,7 +554,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
               }`}
             >
               <span className="text-[10px] font-extrabold uppercase text-amber-400 block mb-1">
-                Minimum / Fast Turnover
+                Fast Turnover (+2%)
               </span>
               <div className="text-xl font-black font-mono text-white mb-1">
                 ${simulation?.pricingPresets?.minimumFast?.price?.toLocaleString()}
@@ -612,7 +610,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
                 ${simulation?.pricingPresets?.aggressiveHigh?.price?.toLocaleString()}
                 <span className="text-xs font-normal text-slate-400"> / pt</span>
               </div>
-              <p className="text-[11px] text-slate-400 mb-2">+1.5% above top 10 market average</p>
+              <p className="text-[11px] text-slate-400 mb-2">+1.5% above top market average</p>
               <div className="text-xs pt-2 border-t border-slate-800 flex justify-between font-medium">
                 <span className="text-slate-400">Net Profit:</span>
                 <span className="text-purple-300 font-mono font-bold">
@@ -620,16 +618,16 @@ export default function MuseumSetBuilder({ setActiveTab }) {
                 </span>
               </div>
             </div>
-
           </div>
 
-          {/* Custom Price Input & Execution Strip */}
-          <div className="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Custom Price Strip */}
+          <div className="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  Custom Point Price ($):
-                </label>
+              <label className="text-xs font-semibold text-slate-300 whitespace-nowrap">
+                Custom Target Price:
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-mono">$</span>
                 <input
                   type="number"
                   value={customPrice}
@@ -637,34 +635,168 @@ export default function MuseumSetBuilder({ setActiveTab }) {
                     setCustomPrice(e.target.value);
                     setSelectedPricingMode('custom');
                   }}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm w-36 focus:outline-none focus:border-emerald-500"
+                  className="bg-slate-950 border border-slate-700 rounded-xl pl-7 pr-3 py-2 text-white font-mono font-bold text-sm w-36 focus:outline-none focus:border-emerald-500"
                 />
               </div>
+              <span className="text-xs text-slate-400">/ pt</span>
+            </div>
 
-              <div className="text-xs space-y-0.5">
-                <span className="text-slate-400 block">Projected Net Revenue:</span>
-                <span className="font-mono font-bold text-white text-base">{formatMoney(projectedRevenue)}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Quick set:</span>
+              <button
+                onClick={() => { setCustomPrice(32500); setSelectedPricingMode('custom'); }}
+                className="bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1 rounded-lg text-slate-300 font-mono"
+              >
+                $32,500
+              </button>
+              <button
+                onClick={() => { setCustomPrice(45000); setSelectedPricingMode('custom'); }}
+                className="bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1 rounded-lg text-slate-300 font-mono"
+              >
+                $45,000
+              </button>
+              <button
+                onClick={() => { setCustomPrice(47000); setSelectedPricingMode('custom'); }}
+                className="bg-slate-800 hover:bg-slate-700 text-xs px-2.5 py-1 rounded-lg text-slate-300 font-mono"
+              >
+                $47,000
+              </button>
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* 4. TRANSPARENT FINANCIAL BREAKDOWN (EVERY SINGLE NUMBER EXPLICITLY VISIBLE) */}
+          {/* ========================================================================= */}
+          <div className="bg-slate-950/80 rounded-2xl p-5 border border-slate-800/90 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Coins className="h-4 w-4 text-emerald-400" />
+                <span>Financial Breakdown Ledger (All Numbers Visible)</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-mono">
+                Gross Revenue ({pointsGenerated} pts × ${Number(activePrice).toLocaleString()}) − FIFO Spend ({formatMoney(totalFifoCost)})
+              </span>
+            </div>
+
+            {/* 6 Grid Metric Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* Metric 1: Sets Selected */}
+              <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Sets Selected</span>
+                <span className="text-lg font-black font-mono text-white block">{setCount}</span>
+                <span className="text-[10px] text-slate-500">10 points / set</span>
               </div>
 
-              <div className="text-xs space-y-0.5">
-                <span className="text-slate-400 block">Net Realized Profit:</span>
-                <span className="font-mono font-black text-emerald-400 text-base">+{formatMoney(projectedNetProfit)}</span>
+              {/* Metric 2: Points Generated */}
+              <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Points Yielded</span>
+                <span className="text-lg font-black font-mono text-amber-400 block">{pointsGenerated}</span>
+                <span className="text-[10px] text-slate-500">{setCount} sets × 10</span>
               </div>
 
-              <div className="text-xs space-y-0.5 hidden sm:block">
-                <span className="text-slate-400 block">ROI Margin:</span>
-                <span className="font-mono font-extrabold text-emerald-300 text-base">{projectedRoiPct.toFixed(1)}%</span>
+              {/* Metric 3: Total FIFO Cost (Spent to complete) */}
+              <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Amount Spent (FIFO)</span>
+                <span className="text-lg font-black font-mono text-slate-200 block">{formatMoney(totalFifoCost)}</span>
+                <span className="text-[10px] text-slate-500">Exact item cost basis</span>
+              </div>
+
+              {/* Metric 4: Breakeven Cost per Point */}
+              <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Breakeven / Point</span>
+                <span className="text-lg font-black font-mono text-amber-300 block">
+                  ${pointsGenerated > 0 ? (totalFifoCost / pointsGenerated).toFixed(2) : '0.00'}
+                </span>
+                <span className="text-[10px] text-slate-500">Spent ÷ Points</span>
+              </div>
+
+              {/* Metric 5: Sale Price per Point */}
+              <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Target Sale Price</span>
+                <span className="text-lg font-black font-mono text-sky-400 block">
+                  ${Number(activePrice).toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-500">per Museum point</span>
+              </div>
+
+              {/* Metric 6: Gross Revenue */}
+              <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Gross Revenue</span>
+                <span className="text-lg font-black font-mono text-white block">{formatMoney(projectedRevenue)}</span>
+                <span className="text-[10px] text-slate-500">{pointsGenerated} pts × ${Number(activePrice).toLocaleString()}</span>
               </div>
             </div>
 
-            <button
-              onClick={handleExecuteConversion}
-              disabled={submitting || (simulation?.maxSets || 0) < setCount}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black text-sm px-6 py-3 rounded-xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all shrink-0"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>{submitting ? 'Converting...' : `Convert ${setCount} Set(s) for ${pointsGenerated} Points`}</span>
-            </button>
+            {/* Bottom Equation Highlight Card */}
+            <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-teal-950/40 rounded-2xl p-4 border border-emerald-500/30 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="space-y-1 text-center md:text-left">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center justify-center md:justify-start gap-1.5">
+                  <TrendingUp className="h-4 w-4" />
+                  <span>Projected Net Income / Profit</span>
+                </span>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-xs font-mono text-slate-300">
+                  <span className="bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
+                    Gross: <strong className="text-white">{formatMoney(projectedRevenue)}</strong>
+                  </span>
+                  <span>−</span>
+                  <span className="bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
+                    Spent: <strong className="text-slate-300">{formatMoney(totalFifoCost)}</strong>
+                  </span>
+                  <span>=</span>
+                  <span className="bg-emerald-900/40 px-2.5 py-1 rounded-lg border border-emerald-500/40 text-emerald-300 font-bold">
+                    Net: +{formatMoney(projectedNetProfit)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Net Profit</span>
+                  <span className="text-2xl md:text-3xl font-black font-mono text-emerald-400">
+                    +{formatMoney(projectedNetProfit)}
+                  </span>
+                </div>
+
+                <div className="text-right border-l border-slate-800 pl-6">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">ROI Margin</span>
+                  <span className="text-2xl md:text-3xl font-black font-mono text-teal-300">
+                    +{projectedRoiPct.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions & Torn External Navigation */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <a
+                href="https://www.torn.com/museum.php"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+              >
+                <span>Exchange at Torn Museum</span>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+
+              <a
+                href="https://www.torn.com/pointsmarket.php"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-4 py-2.5 rounded-xl border border-slate-700 active:scale-95 transition-all"
+              >
+                <span>Points Market</span>
+                <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+              </a>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 px-3.5 py-2 rounded-xl">
+              <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+              <span>
+                <strong>100% Auto-Synced:</strong> Torn exchanges are imported directly via API Log 7000 without duplicate risk.
+              </span>
+            </div>
           </div>
         </div>
       </div>
