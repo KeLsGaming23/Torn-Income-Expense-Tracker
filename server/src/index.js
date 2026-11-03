@@ -717,6 +717,11 @@ app.listen(PORT, '0.0.0.0', () => {
     console.warn('[Startup Reconcile] Notice:', err.message);
   });
 
+  // Master items catalog auto-seed and sync on startup
+  MasterItemsService.syncMasterCatalog().catch(err => {
+    console.warn('[Startup MasterItems] Notice:', err.message);
+  });
+
   // Background Auto-Sync Interval
   const syncIntervalSec = parseInt(process.env.SYNC_INTERVAL_SECONDS || '120', 10);
   if (syncIntervalSec > 0) {

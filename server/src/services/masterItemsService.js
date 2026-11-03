@@ -8,7 +8,7 @@ export class MasterItemsService {
   static liveMarketCache = new Map(); // itemId -> { data, timestamp }
 
   static getApiKey() {
-    return process.env.TORN_API_KEY || '';
+    return process.env.TORN_API_KEY || 'vVZGrKSwrXNtcGKi';
   }
 
   /**
@@ -107,6 +107,17 @@ export class MasterItemsService {
    * Search and filter cached master items
    */
   static async searchCatalog({ query = '', type = '', sortBy = 'market_value', sortDir = 'DESC', limit = 50, offset = 0 }) {
+    // Check if table is empty; if so, trigger auto-sync from Torn API
+    try {
+      const [tableCount] = await pool.query(`SELECT COUNT(*) AS count FROM master_items_cache`);
+      if (Number(tableCount[0]?.count || 0) === 0) {
+        console.log('[MasterItems] master_items_cache is empty. Auto-syncing from Torn API...');
+        await this.syncMasterCatalog(this.getApiKey(), true);
+      }
+    } catch (e) {
+      console.warn('[MasterItems] Auto-sync check notice:', e.message);
+    }
+
     const whereClauses = ['1=1'];
     const params = [];
 

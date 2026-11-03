@@ -9,7 +9,7 @@ export class InventoryService {
   static inventoryCache = { data: null, timestamp: 0 };
 
   static getApiKey() {
-    return process.env.TORN_API_KEY || '';
+    return process.env.TORN_API_KEY || 'vVZGrKSwrXNtcGKi';
   }
 
   /**
@@ -46,7 +46,7 @@ export class InventoryService {
     console.log('[InventoryService] Polling Torn API v2 for all user inventory categories...');
 
     const categoryRequests = categoriesToFetch.map(cat => 
-      axios.get(`https://api.torn.com/v2/user/inventory?cat=${cat}&key=${apiKey}`, { headers, timeout: 15000 })
+      axios.get(`https://api.torn.com/v2/user/inventory?cat=${encodeURIComponent(cat)}&key=${apiKey}`, { headers, timeout: 15000 })
         .then(res => ({ cat, items: res.data?.inventory?.items || [] }))
         .catch(err => {
           console.warn(`[InventoryService] Error fetching category ${cat}:`, err.message);

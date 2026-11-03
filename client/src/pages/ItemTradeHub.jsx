@@ -196,23 +196,23 @@ export default function ItemTradeHub() {
 
   // Calculate dynamic totals based on chosen pricing mode (Fast / Market / Patient)
   const inventoryTotals = useMemo(() => {
-    if (!filteredInventoryItems.length) return { revenue: 0, cost: 0, profit: 0 };
+    if (!filteredInventoryItems.length) return { revenue: 0, cost: 0, profit: 0, roi: 0 };
     let rev = 0;
     let cost = 0;
     filteredInventoryItems.forEach(item => {
       const price = pricingMode === 'fast'
-        ? item.pricing.fastTurnoverPrice
+        ? (item?.pricing?.fastTurnoverPrice || item?.marketValue || 0)
         : pricingMode === 'patient'
-        ? item.pricing.patientPrice
-        : item.pricing.marketPrice;
-      rev += item.amount * price;
-      cost += item.totalItemCost;
+        ? (item?.pricing?.patientPrice || item?.marketValue || 0)
+        : (item?.pricing?.marketPrice || item?.marketValue || 0);
+      rev += (item.amount || 0) * price;
+      cost += (item.totalItemCost || 0);
     });
     return {
       revenue: rev,
       cost,
       profit: rev - cost,
-      roi: cost > 0 ? ((rev - cost) / cost) * 100 : 100
+      roi: cost > 0 ? ((rev - cost) / cost) * 100 : (rev > 0 ? 100 : 0)
     };
   }, [filteredInventoryItems, pricingMode]);
 
@@ -222,6 +222,7 @@ export default function ItemTradeHub() {
   const [catalogItems, setCatalogItems] = useState([]);
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [syncingCatalog, setSyncingCatalog] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogType, setCatalogType] = useState('all');
   const [catalogSortBy, setCatalogSortBy] = useState('market_value');
@@ -251,6 +252,24 @@ export default function ItemTradeHub() {
       showToast('error', 'Failed to load master item catalog');
     } finally {
       setCatalogLoading(false);
+    }
+  };
+
+  const handleSyncCatalog = async () => {
+    try {
+      setSyncingCatalog(true);
+      showToast('info', 'Syncing master items catalog from Torn API...');
+      const res = await syncItemsCatalog();
+      if (res.success) {
+        showToast('success', `Master catalog synced successfully! (${res.count || 0} items)`);
+        await fetchCatalog();
+      } else {
+        showToast('error', res.message || 'Catalog sync failed');
+      }
+    } catch (err) {
+      showToast('error', err.response?.data?.message || err.message || 'Failed to sync catalog');
+    } finally {
+      setSyncingCatalog(false);
     }
   };
 
@@ -545,7 +564,7 @@ export default function ItemTradeHub() {
                   <div className="glass-panel rounded-2xl p-4 border border-emerald-500/30 bg-emerald-950/15">
                     <span className="text-[10px] uppercase font-bold text-emerald-400 block mb-1">Projected Flip Profit</span>
                     <span className="text-lg font-black font-mono text-emerald-300 block">+${tradeCalculation.flipProfit.toLocaleString()}</span>
-                    <span className="text-[10px] text-teal-300 font-mono">+{tradeCalculation.marginPct.toFixed(1)}% Margin</span>
+                    <span className="text-[10px] text-teal-300 font-mono">+{(tradeCalculation?.marginPct || 0).toFixed(1)}% Margin</span>
                   </div>
                 </div>
 
@@ -643,7 +662,7 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
               <span className="text-2xl font-black font-mono text-emerald-400 block">
                 +{formatMoney(inventoryTotals.profit)}
               </span>
-              <span className="text-[10px] text-teal-300 font-mono">+{inventoryTotals.roi.toFixed(1)}% Net ROI</span>
+              <span className="text-[10px] text-teal-300 font-mono">+{(inventoryTotals?.roi || 0).toFixed(1)}% Net ROI</span>
             </div>
           </div>
 
@@ -759,13 +778,14 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                   ) : (
                     filteredInventoryItems.map((item) => {
                       const sellingPrice = pricingMode === 'fast'
-                        ? item.pricing.fastTurnoverPrice
+                        ? (item.pricing?.fastTurnoverPrice || item.marketValue || 0)
                         : pricingMode === 'patient'
-                        ? item.pricing.patientPrice
-                        : item.pricing.marketPrice;
-                      const itemRev = item.amount * sellingPrice;
-                      const itemNet = itemRev - item.totalItemCost;
-                      const itemRoi = item.totalItemCost > 0 ? (itemNet / item.totalItemCost) * 100 : 100;
+                        ? (item.pricing?.patientPrice || item.marketValue || 0)
+                        : (item.pricing?.marketPrice || item.marketValue || 0);
+                      const itemRev = (item.amount || 0) * sellingPrice;
+                      const itemCost = Number(item.totalItemCost || 0);
+                      const itemNet = itemRev - itemCost;
+                      const itemRoi = itemCost > 0 ? (itemNet / itemCost) * 100 : 100;
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-900/40 transition-colors">
@@ -828,7 +848,7 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                               +${Math.round(itemNet).toLocaleString()}
                             </div>
                             <div className="text-[10px] text-teal-300/80 font-normal">
-                              +{itemRoi.toFixed(0)}% ROI
+                              +{Number(itemRoi || 0).toFixed(0)}% ROI
                             </div>
                           </td>
 
@@ -882,16 +902,27 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                 </p>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative w-full sm:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search by item name or ID..."
-                  value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                />
+              {/* Search & Sync Actions */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by item name or ID..."
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <button
+                  onClick={handleSyncCatalog}
+                  disabled={syncingCatalog}
+                  className="shrink-0 flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-emerald-400 border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-bold transition-colors"
+                  title="Force re-sync catalog from Torn API"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncingCatalog ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">{syncingCatalog ? 'Syncing...' : 'Sync Catalog'}</span>
+                </button>
               </div>
             </div>
 
@@ -941,8 +972,26 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
               <span className="text-xs font-semibold">Loading Torn catalog...</span>
             </div>
           ) : catalogItems.length === 0 ? (
-            <div className="glass-panel rounded-3xl p-12 text-center text-slate-500">
-              No items found matching "{catalogSearch}".
+            <div className="glass-panel rounded-3xl p-12 text-center text-slate-400 space-y-4">
+              <div className="mx-auto w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+                <Package className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-white font-bold text-sm">
+                  {catalogSearch ? `No items found matching "${catalogSearch}"` : 'Master Catalog is Empty or Initializing'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                  Sync all 1,500+ Torn City items directly from the official Torn API to browse items, live prices, and circulation stats.
+                </p>
+              </div>
+              <button
+                onClick={handleSyncCatalog}
+                disabled={syncingCatalog}
+                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition-colors shadow-lg shadow-emerald-500/20"
+              >
+                <RefreshCw className={`h-4 w-4 ${syncingCatalog ? 'animate-spin' : ''}`} />
+                <span>{syncingCatalog ? 'Syncing Catalog...' : 'Sync Master Catalog Now'}</span>
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
