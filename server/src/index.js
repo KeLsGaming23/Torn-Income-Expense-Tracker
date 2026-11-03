@@ -10,6 +10,8 @@ import pool from './config/db.js';
 import { TornSyncService } from './services/tornSyncService.js';
 import { FIFOEngine } from './services/fifoEngine.js';
 import { ALL_MUSEUM_ITEMS_MAP, PLUSHIE_SET, FLOWER_SET } from './constants/masterItems.js';
+import { MasterItemsService } from './services/masterItemsService.js';
+import { InventoryService } from './services/inventoryService.js';
 
 dotenv.config();
 
@@ -282,6 +284,73 @@ app.get('/api/inventory/master-items', (req, res) => {
     plushies: PLUSHIE_SET,
     flowers: FLOWER_SET
   });
+});
+
+// ==========================================
+// 3.5. ITEM MARKET & TRADE HUB ENDPOINTS
+// ==========================================
+
+// Search master items catalog (all 1,500+ items)
+app.get('/api/items/catalog', async (req, res) => {
+  try {
+    const { query, type, sortBy, sortDir, limit, offset } = req.query;
+    const result = await MasterItemsService.searchCatalog({
+      query,
+      type,
+      sortBy,
+      sortDir,
+      limit,
+      offset
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Force sync master catalog
+app.post('/api/items/sync-catalog', async (req, res) => {
+  try {
+    const result = await MasterItemsService.syncMasterCatalog(process.env.TORN_API_KEY || 'vVZGrKSwrXNtcGKi', true);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Get live market listings & lowest prices for an item
+app.get('/api/items/market/:id', async (req, res) => {
+  try {
+    const result = await MasterItemsService.getLiveItemMarket(req.params.id, process.env.TORN_API_KEY || 'vVZGrKSwrXNtcGKi');
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Calculate trade offer & flip margin
+app.post('/api/items/trade-pricer', (req, res) => {
+  try {
+    const { marketPrice, buyPercent, quantity } = req.body;
+    const result = MasterItemsService.calculateTradeOffer({ marketPrice, buyPercent, quantity });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// Get player inventory items with cost basis, origin badge, and bazaar pricing
+app.get('/api/inventory/items', async (req, res) => {
+  try {
+    const { category, force } = req.query;
+    const result = await InventoryService.getPlayerInventory({
+      category,
+      force: force === 'true'
+    });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // ==========================================

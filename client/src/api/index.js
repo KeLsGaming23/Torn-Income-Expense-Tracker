@@ -65,4 +65,20 @@ export const logExpense = (payload) =>
 export const deleteExpense = (id) => 
   api.delete(`/expenses/${id}`).then(r => r.data);
 
+// 7. Item Market & Trade Hub
+export const getItemsCatalog = (params) => 
+  api.get('/items/catalog', { params }).then(r => r.data);
+
+export const syncItemsCatalog = () => 
+  api.post('/items/sync-catalog').then(r => r.data);
+
+export const getLiveItemMarket = (id) => 
+  api.get(`/items/market/${id}`).then(r => r.data);
+
+export const calculateTradeOffer = (payload) => 
+  api.post('/items/trade-pricer', payload).then(r => r.data);
+
+export const getPlayerInventoryItems = (params) => 
+  api.get('/inventory/items', { params }).then(r => r.data);
+
 export default api;

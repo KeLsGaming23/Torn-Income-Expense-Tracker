@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS `sync_state` (
     `id` INT PRIMARY KEY DEFAULT 1,
     `last_log_timestamp` BIGINT NOT NULL DEFAULT 0,
     `last_synced_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `legacy_cutoff_date` DATETIME NOT NULL DEFAULT '2026-10-01 00:00:00',
     `travel_json` TEXT NULL
 ) ENGINE=InnoDB;
 
@@ -19,8 +20,8 @@ CREATE TABLE IF NOT EXISTS `inventory_lots` (
     `torn_log_id` VARCHAR(64) UNIQUE NULL, -- prevents duplicate API entries
     `item_id` INT NOT NULL,
     `item_name` VARCHAR(100) NOT NULL,
-    `item_type` ENUM('plushie', 'flower') NOT NULL,
-    `source` ENUM('abroad', 'bazaar', 'market', 'trade', 'manual') NOT NULL,
+    `item_type` VARCHAR(40) NOT NULL,
+    `source` ENUM('abroad', 'bazaar', 'market', 'trade', 'crime', 'legacy', 'manual') NOT NULL,
     `qty_initial` INT NOT NULL,
     `qty_remaining` INT NOT NULL,
     `unit_cost` BIGINT NOT NULL,
@@ -104,6 +105,25 @@ CREATE TABLE IF NOT EXISTS `pending_trades` (
     `items_json` JSON NOT NULL,
     `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- 8. Master Items Cache (all 1,503 Torn items with live market value)
+CREATE TABLE IF NOT EXISTS `master_items_cache` (
+    `item_id` INT PRIMARY KEY,
+    `name` VARCHAR(120) NOT NULL,
+    `description` TEXT NULL,
+    `item_type` VARCHAR(40) NOT NULL,
+    `weapon_type` VARCHAR(40) NULL,
+    `buy_price` BIGINT NOT NULL DEFAULT 0,
+    `sell_price` BIGINT NOT NULL DEFAULT 0,
+    `market_value` BIGINT NOT NULL DEFAULT 0,
+    `circulation` BIGINT NOT NULL DEFAULT 0,
+    `image_url` VARCHAR(255) NULL,
+    `is_tradeable` BOOLEAN NOT NULL DEFAULT TRUE,
+    `last_synced_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_master_type` (`item_type`),
+    INDEX `idx_master_name` (`name`),
+    INDEX `idx_market_value` (`market_value`)
 ) ENGINE=InnoDB;
 
 -- ========================================================

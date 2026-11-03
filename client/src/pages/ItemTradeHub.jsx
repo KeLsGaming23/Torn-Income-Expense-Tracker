@@ -1,0 +1,1016 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Calculator, 
+  ShoppingBag, 
+  Search, 
+  RefreshCw, 
+  Copy, 
+  Check, 
+  TrendingUp, 
+  DollarSign, 
+  Coins, 
+  ShieldCheck, 
+  Sliders, 
+  Package, 
+  ExternalLink, 
+  Sparkles,
+  ArrowRight,
+  Filter,
+  Layers,
+  Tag,
+  AlertCircle,
+  Clock
+} from 'lucide-react';
+import { 
+  getItemsCatalog, 
+  syncItemsCatalog, 
+  getLiveItemMarket, 
+  calculateTradeOffer, 
+  getPlayerInventoryItems 
+} from '../api';
+import { useTornData } from '../context/TornDataContext';
+
+export default function ItemTradeHub() {
+  const { showToast } = useTornData();
+
+  // Active Sub-Tab: 'pricer' | 'bazaar' | 'catalog'
+  const [activeSubTab, setActiveSubTab] = useState('pricer');
+
+  // =========================================================================
+  // SUB-TAB 1: TRADE BUY PRICER STATE
+  // =========================================================================
+  const [pricerSearch, setPricerSearch] = useState('');
+  const [pricerCatalogResults, setPricerCatalogResults] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [liveMarket, setLiveMarket] = useState(null);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [buyPercent, setBuyPercent] = useState(90);
+  const [quantity, setQuantity] = useState(1);
+  const [customPriceInput, setCustomPriceInput] = useState('');
+  const [copiedReceipt, setCopiedReceipt] = useState(false);
+
+  // Quick Pick Popular Trade Items
+  const popularTradeItems = [
+    { id: 206, name: 'Xanax', type: 'Drug' },
+    { id: 366, name: 'Feathery Hotel Coupon', type: 'Booster' },
+    { id: 367, name: 'Can of Munster', type: 'Energy Drink' },
+    { id: 383, name: 'Erotic DVD', type: 'Booster' },
+    { id: 281, name: 'Lion Plushie', type: 'Plushie' },
+    { id: 384, name: 'Camel Plushie', type: 'Plushie' },
+    { id: 260, name: 'Dahlia', type: 'Flower' },
+    { id: 264, name: 'Orchid', type: 'Flower' }
+  ];
+
+  // Search catalog for trade pricer autocomplete
+  useEffect(() => {
+    if (!pricerSearch || pricerSearch.trim().length < 2) {
+      setPricerCatalogResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getItemsCatalog({ query: pricerSearch.trim(), limit: 12 });
+        if (res.success) {
+          setPricerCatalogResults(res.items || []);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [pricerSearch]);
+
+  // When an item is selected for the Trade Pricer, fetch live market listings
+  const handleSelectItemForPricer = async (item) => {
+    setSelectedItem(item);
+    setPricerSearch('');
+    setPricerCatalogResults([]);
+    try {
+      setMarketLoading(true);
+      const res = await getLiveItemMarket(item.item_id || item.id);
+      if (res.success) {
+        setLiveMarket(res);
+        setCustomPriceInput(res.lowestPrice || item.market_value || 0);
+      } else {
+        setLiveMarket({
+          itemId: item.item_id || item.id,
+          itemName: item.name,
+          averagePrice: item.market_value || 0,
+          lowestPrice: item.market_value || 0,
+          topListings: []
+        });
+        setCustomPriceInput(item.market_value || 0);
+      }
+    } catch (err) {
+      console.error(err);
+      setLiveMarket({
+        itemId: item.item_id || item.id,
+        itemName: item.name,
+        averagePrice: item.market_value || 0,
+        lowestPrice: item.market_value || 0,
+        topListings: []
+      });
+      setCustomPriceInput(item.market_value || 0);
+    } finally {
+      setMarketLoading(false);
+    }
+  };
+
+  // Default to Xanax on initial load
+  useEffect(() => {
+    if (!selectedItem) {
+      handleSelectItemForPricer({ item_id: 206, name: 'Xanax', market_value: 859850, item_type: 'Drug' });
+    }
+  }, []);
+
+  // Trade calculations
+  const activeMarketPrice = Number(customPriceInput || liveMarket?.lowestPrice || selectedItem?.market_value || 0);
+  const tradeCalculation = useMemo(() => {
+    const qty = Math.max(1, parseInt(quantity, 10) || 1);
+    const percent = Number(buyPercent || 90);
+    const unitOffer = Math.round(activeMarketPrice * (percent / 100));
+    const totalPayout = unitOffer * qty;
+    const totalMarketVal = activeMarketPrice * qty;
+    const flipProfit = totalMarketVal - totalPayout;
+    const marginPct = totalPayout > 0 ? (flipProfit / totalPayout) * 100 : 0;
+    return {
+      qty,
+      percent,
+      unitOffer,
+      totalPayout,
+      totalMarketVal,
+      flipProfit,
+      marginPct
+    };
+  }, [activeMarketPrice, buyPercent, quantity]);
+
+  // Copy trade receipt to clipboard
+  const handleCopyReceipt = () => {
+    if (!selectedItem) return;
+    const receipt = `[Torn Trade Receipt]\nItem: ${tradeCalculation.qty}x ${selectedItem.name}\nMarket Value: $${activeMarketPrice.toLocaleString()} ($${tradeCalculation.totalMarketVal.toLocaleString()} total)\nBuy Offer (${tradeCalculation.percent}%): $${tradeCalculation.unitOffer.toLocaleString()}/ea\nTotal Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`;
+    navigator.clipboard.writeText(receipt);
+    setCopiedReceipt(true);
+    showToast('success', 'Trade receipt copied to clipboard!');
+    setTimeout(() => setCopiedReceipt(false), 2500);
+  };
+
+  // =========================================================================
+  // SUB-TAB 2: INVENTORY & BAZAAR OPTIMIZER STATE
+  // =========================================================================
+  const [inventoryData, setInventoryData] = useState(null);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invCategoryFilter, setInvCategoryFilter] = useState('all');
+  const [invSearch, setInvSearch] = useState('');
+  const [pricingMode, setPricingMode] = useState('fast'); // 'fast' (-$1) | 'market' | 'patient' (+2%)
+
+  const fetchInventory = async (force = false) => {
+    try {
+      setInvLoading(true);
+      const res = await getPlayerInventoryItems({ force });
+      if (res.success) {
+        setInventoryData(res);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to load user inventory');
+    } finally {
+      setInvLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'bazaar' && !inventoryData) {
+      fetchInventory(false);
+    }
+  }, [activeSubTab]);
+
+  // Filter inventory items
+  const filteredInventoryItems = useMemo(() => {
+    if (!inventoryData?.items) return [];
+    return inventoryData.items.filter(item => {
+      const matchesCat = invCategoryFilter === 'all' || item.itemType?.toLowerCase() === invCategoryFilter.toLowerCase();
+      const matchesSearch = !invSearch || item.name.toLowerCase().includes(invSearch.toLowerCase());
+      return matchesCat && matchesSearch;
+    });
+  }, [inventoryData, invCategoryFilter, invSearch]);
+
+  // Calculate dynamic totals based on chosen pricing mode (Fast / Market / Patient)
+  const inventoryTotals = useMemo(() => {
+    if (!filteredInventoryItems.length) return { revenue: 0, cost: 0, profit: 0 };
+    let rev = 0;
+    let cost = 0;
+    filteredInventoryItems.forEach(item => {
+      const price = pricingMode === 'fast'
+        ? item.pricing.fastTurnoverPrice
+        : pricingMode === 'patient'
+        ? item.pricing.patientPrice
+        : item.pricing.marketPrice;
+      rev += item.amount * price;
+      cost += item.totalItemCost;
+    });
+    return {
+      revenue: rev,
+      cost,
+      profit: rev - cost,
+      roi: cost > 0 ? ((rev - cost) / cost) * 100 : 100
+    };
+  }, [filteredInventoryItems, pricingMode]);
+
+  // =========================================================================
+  // SUB-TAB 3: MASTER ITEM CATALOG BROWSER STATE
+  // =========================================================================
+  const [catalogItems, setCatalogItems] = useState([]);
+  const [catalogTotal, setCatalogTotal] = useState(0);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogType, setCatalogType] = useState('all');
+  const [catalogSortBy, setCatalogSortBy] = useState('market_value');
+  const [catalogSortDir, setCatalogSortDir] = useState('DESC');
+  const [availableTypes, setAvailableTypes] = useState([]);
+  const [catalogPage, setCatalogPage] = useState(0);
+  const pageSize = 48;
+
+  const fetchCatalog = async () => {
+    try {
+      setCatalogLoading(true);
+      const res = await getItemsCatalog({
+        query: catalogSearch,
+        type: catalogType !== 'all' ? catalogType : undefined,
+        sortBy: catalogSortBy,
+        sortDir: catalogSortDir,
+        limit: pageSize,
+        offset: catalogPage * pageSize
+      });
+      if (res.success) {
+        setCatalogItems(res.items || []);
+        setCatalogTotal(res.total || 0);
+        if (res.availableTypes) setAvailableTypes(res.availableTypes);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Failed to load master item catalog');
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'catalog') {
+      fetchCatalog();
+    }
+  }, [activeSubTab, catalogType, catalogSortBy, catalogSortDir, catalogPage]);
+
+  // Debounce catalog search
+  useEffect(() => {
+    if (activeSubTab !== 'catalog') return;
+    const timer = setTimeout(() => {
+      setCatalogPage(0);
+      fetchCatalog();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [catalogSearch]);
+
+  const formatMoney = (val) => '$' + Number(val || 0).toLocaleString();
+
+  return (
+    <div className="space-y-6">
+
+      {/* 1. HEADER & SUB-NAVIGATION BAR */}
+      <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-black text-white flex items-center gap-2.5">
+                <Package className="h-6 w-6 text-emerald-400" />
+                <span>Item Market & Trade Hub</span>
+              </h2>
+              <span className="text-[10px] font-bold text-sky-400 bg-sky-950/60 border border-sky-800/60 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                <ShieldCheck className="h-3 w-3" />
+                <span>Oct 1 Cutoff Active</span>
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Live Trade Pricer (90% Buy Offer), Bazaar Profit Optimizer, and Full 1,500+ Master Item Catalog
+            </p>
+          </div>
+
+          {/* Quick Metrics Pill */}
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-2xl text-xs">
+              <span className="text-slate-400 block text-[10px] uppercase font-bold">Cutoff Rule</span>
+              <span className="text-emerald-400 font-mono font-black">Pre-Oct 1 = $0 Cost Basis</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3 Sub-Navigation Tabs */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+          <button
+            onClick={() => setActiveSubTab('pricer')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              activeSubTab === 'pricer'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Calculator className="h-4 w-4" />
+            <span>Trade Buy Pricer (90% Offer)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('bazaar')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              activeSubTab === 'bazaar'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+            }`}
+          >
+            <ShoppingBag className="h-4 w-4" />
+            <span>My Inventory & Bazaar Optimizer</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('catalog')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              activeSubTab === 'catalog'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Search className="h-4 w-4" />
+            <span>Master Item Browser (1,500+)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* VIEW 1: TRADE BUY PRICER & FLIP MARGIN CALCULATOR */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'pricer' && (
+        <div className="space-y-6">
+          {/* Item Selector & Autocomplete Bar */}
+          <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Calculator className="h-4 w-4 text-emerald-400" />
+                  <span>Select Item to Value for Trade:</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Search any item in Torn or click a popular trade asset below
+                </p>
+              </div>
+
+              {/* Autocomplete Input */}
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search item name (e.g. Xanax, FHC)..."
+                  value={pricerSearch}
+                  onChange={(e) => setPricerSearch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+
+                {/* Dropdown Results */}
+                {pricerCatalogResults.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-64 overflow-y-auto z-50 divide-y divide-slate-800">
+                    {pricerCatalogResults.map((item) => (
+                      <div
+                        key={item.item_id}
+                        onClick={() => handleSelectItemForPricer(item)}
+                        className="p-2.5 hover:bg-slate-800 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <img src={item.image_url} alt="" className="h-6 w-6 object-contain" />
+                          <div>
+                            <div className="font-bold text-white">{item.name}</div>
+                            <div className="text-[10px] text-slate-400">{item.item_type}</div>
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-emerald-400">${Number(item.market_value).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Pick Chips */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 scrollbar-none">
+              <span className="text-[11px] text-slate-500 font-semibold whitespace-nowrap">Quick Picks:</span>
+              {popularTradeItems.map((pop) => (
+                <button
+                  key={pop.id}
+                  onClick={() => handleSelectItemForPricer({ item_id: pop.id, name: pop.name, item_type: pop.type })}
+                  className={`text-xs px-3 py-1.5 rounded-xl border font-semibold whitespace-nowrap transition-all ${
+                    selectedItem?.item_id === pop.id || selectedItem?.id === pop.id
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border-slate-800'
+                  }`}
+                >
+                  {pop.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Active Calculation & Live Pricing Matrix */}
+          {selectedItem && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Left Column: Item Profile & Config */}
+              <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-5">
+                <div className="flex items-start gap-4">
+                  <div className="h-16 w-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center p-2 shrink-0">
+                    <img 
+                      src={selectedItem.image_url || `https://www.torn.com/images/items/${selectedItem.item_id || selectedItem.id}/large.png`} 
+                      alt="" 
+                      className="h-full w-full object-contain" 
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                      {selectedItem.item_type || selectedItem.category || 'Item'}
+                    </span>
+                    <h3 className="text-lg font-black text-white">{selectedItem.name}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-slate-400">Market Value:</span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        ${Number(selectedItem.market_value || liveMarket?.averagePrice || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lowest Live Listing Indicator */}
+                <div className="bg-slate-950/80 rounded-2xl p-4 border border-slate-800 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-400">Lowest Active Listing:</span>
+                    <span className="font-mono font-bold text-sky-400">
+                      ${Number(liveMarket?.lowestPrice || activeMarketPrice).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-400">Market Average:</span>
+                    <span className="font-mono font-bold text-slate-300">
+                      ${Number(liveMarket?.averagePrice || selectedItem.market_value || 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Discount Percentage Preset Strip */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-300 flex justify-between items-center">
+                    <span>Trader Buy Rate:</span>
+                    <span className="text-emerald-400 font-mono text-sm font-extrabold">{buyPercent}% of Market</span>
+                  </label>
+
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[85, 88, 90, 92, 95].map((pct) => (
+                      <button
+                        key={pct}
+                        onClick={() => setBuyPercent(pct)}
+                        className={`py-1.5 rounded-xl text-xs font-bold font-mono transition-all border ${
+                          buyPercent === pct
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="range"
+                    min="75"
+                    max="99"
+                    value={buyPercent}
+                    onChange={(e) => setBuyPercent(Number(e.target.value))}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                  />
+                </div>
+
+                {/* Quantity Input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300 block">Quantity to Buy:</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm w-full focus:outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      onClick={() => setQuantity(10)}
+                      className="bg-slate-900 hover:bg-slate-800 text-xs font-mono font-bold text-slate-300 px-3 py-2 rounded-xl border border-slate-800"
+                    >
+                      10x
+                    </button>
+                    <button
+                      onClick={() => setQuantity(50)}
+                      className="bg-slate-900 hover:bg-slate-800 text-xs font-mono font-bold text-slate-300 px-3 py-2 rounded-xl border border-slate-800"
+                    >
+                      50x
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Columns: Financial Ledger & Copyable Receipt */}
+              <div className="lg:col-span-2 space-y-6">
+
+                {/* 4-Metric High Contrast Output Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="glass-panel rounded-2xl p-4 border border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Buy Offer / Unit</span>
+                    <span className="text-lg font-black font-mono text-emerald-400 block">${tradeCalculation.unitOffer.toLocaleString()}</span>
+                    <span className="text-[10px] text-slate-500">{buyPercent}% of ${activeMarketPrice.toLocaleString()}</span>
+                  </div>
+
+                  <div className="glass-panel rounded-2xl p-4 border border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Payout</span>
+                    <span className="text-lg font-black font-mono text-white block">${tradeCalculation.totalPayout.toLocaleString()}</span>
+                    <span className="text-[10px] text-slate-500">To seller ({tradeCalculation.qty} units)</span>
+                  </div>
+
+                  <div className="glass-panel rounded-2xl p-4 border border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Market Value</span>
+                    <span className="text-lg font-black font-mono text-sky-400 block">${tradeCalculation.totalMarketVal.toLocaleString()}</span>
+                    <span className="text-[10px] text-slate-500">Total bazaar value</span>
+                  </div>
+
+                  <div className="glass-panel rounded-2xl p-4 border border-emerald-500/30 bg-emerald-950/15">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 block mb-1">Projected Flip Profit</span>
+                    <span className="text-lg font-black font-mono text-emerald-300 block">+${tradeCalculation.flipProfit.toLocaleString()}</span>
+                    <span className="text-[10px] text-teal-300 font-mono">+{tradeCalculation.marginPct.toFixed(1)}% Margin</span>
+                  </div>
+                </div>
+
+                {/* Equation Card */}
+                <div className="glass-panel rounded-3xl p-5 border border-slate-800 space-y-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <TrendingUp className="h-4 w-4 text-emerald-400" />
+                    <span>Flip Profit Equation Breakdown</span>
+                  </span>
+
+                  <div className="bg-slate-950/90 rounded-2xl p-4 border border-slate-800 flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">Resale Value:</span>
+                      <strong className="text-white">${tradeCalculation.totalMarketVal.toLocaleString()}</strong>
+                    </div>
+                    <span>−</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">Trade Cost ({buyPercent}%):</span>
+                      <strong className="text-amber-400">${tradeCalculation.totalPayout.toLocaleString()}</strong>
+                    </div>
+                    <span>=</span>
+                    <div className="flex items-center gap-2 bg-emerald-950/60 border border-emerald-500/40 px-3 py-1 rounded-xl">
+                      <span className="text-slate-400">Net Flip Gain:</span>
+                      <strong className="text-emerald-300 text-sm font-black">+${tradeCalculation.flipProfit.toLocaleString()}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Copyable Trade Receipt Box */}
+                <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-white text-sm">Copyable Trade Receipt</h4>
+                      <p className="text-xs text-slate-400">Paste directly into Torn trade chat or discord</p>
+                    </div>
+
+                    <button
+                      onClick={handleCopyReceipt}
+                      className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-600/20 active:scale-95"
+                    >
+                      {copiedReceipt ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      <span>{copiedReceipt ? 'Copied!' : 'Copy Receipt'}</span>
+                    </button>
+                  </div>
+
+                  <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800/80 font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-line select-all">
+                    {`[Torn Trade Receipt]
+Item: ${tradeCalculation.qty}x ${selectedItem.name}
+Market Value: $${activeMarketPrice.toLocaleString()} ($${tradeCalculation.totalMarketVal.toLocaleString()} total)
+Buy Offer (${tradeCalculation.percent}%): $${tradeCalculation.unitOffer.toLocaleString()}/ea
+Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VIEW 2: INVENTORY & BAZAAR SELLING OPTIMIZER */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'bazaar' && (
+        <div className="space-y-6">
+
+          {/* Top Inventory Financial Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="glass-panel rounded-3xl p-5 border border-slate-800">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Items in Inventory</span>
+              <span className="text-2xl font-black font-mono text-white block">
+                {inventoryTotals ? filteredInventoryItems.length : 0} <span className="text-xs text-slate-400 font-sans font-normal">unique assets</span>
+              </span>
+              <span className="text-[10px] text-slate-500">Across active filters</span>
+            </div>
+
+            <div className="glass-panel rounded-3xl p-5 border border-slate-800">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Market Value</span>
+              <span className="text-2xl font-black font-mono text-sky-400 block">
+                {formatMoney(inventoryTotals.revenue)}
+              </span>
+              <span className="text-[10px] text-slate-500">At live bazaar price</span>
+            </div>
+
+            <div className="glass-panel rounded-3xl p-5 border border-slate-800">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Total Acquisition Cost</span>
+              <span className="text-2xl font-black font-mono text-amber-400 block">
+                {formatMoney(inventoryTotals.cost)}
+              </span>
+              <span className="text-[10px] text-emerald-400 font-semibold">Pre-Oct 1 & Crime = $0</span>
+            </div>
+
+            <div className="glass-panel rounded-3xl p-5 border border-emerald-500/30 bg-emerald-950/15">
+              <span className="text-[10px] uppercase font-bold text-emerald-400 block mb-1">Projected Net Profit</span>
+              <span className="text-2xl font-black font-mono text-emerald-400 block">
+                +{formatMoney(inventoryTotals.profit)}
+              </span>
+              <span className="text-[10px] text-teal-300 font-mono">+{inventoryTotals.roi.toFixed(1)}% Net ROI</span>
+            </div>
+          </div>
+
+          {/* Pricing Strategy Selector & Controls Bar */}
+          <div className="glass-panel rounded-3xl p-5 border border-slate-800 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h4 className="font-bold text-white text-sm">Suggested Bazaar Pricing Strategy</h4>
+                <p className="text-xs text-slate-400">Select how you want to price your inventory when listing on your Bazaar</p>
+              </div>
+
+              {/* Pricing Strategy Pills */}
+              <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-2xl border border-slate-800">
+                <button
+                  onClick={() => setPricingMode('fast')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    pricingMode === 'fast' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Fast Turnover (-$1 Undercut)
+                </button>
+                <button
+                  onClick={() => setPricingMode('market')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    pricingMode === 'market' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Market Average
+                </button>
+                <button
+                  onClick={() => setPricingMode('patient')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    pricingMode === 'patient' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Patient Seller (+2%)
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Search Strip */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filter inventory items..."
+                    value={invSearch}
+                    onChange={(e) => setInvSearch(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <button
+                  onClick={() => fetchInventory(true)}
+                  disabled={invLoading}
+                  className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-800 shrink-0"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${invLoading ? 'animate-spin text-emerald-400' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              {/* Category Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 scrollbar-none">
+                {['all', 'Drug', 'Supply Pack', 'Temporary', 'Melee', 'Primary', 'Secondary', 'Defensive', 'Plushie', 'Flower', 'Other'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setInvCategoryFilter(cat)}
+                    className={`text-[11px] px-2.5 py-1 rounded-xl border font-semibold whitespace-nowrap transition-all ${
+                      invCategoryFilter.toLowerCase() === cat.toLowerCase()
+                        ? 'bg-slate-800 text-white border-slate-700 shadow-sm'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border-slate-900'
+                    }`}
+                  >
+                    {cat === 'all' ? 'All Items' : cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Inventory Table */}
+          <div className="glass-panel rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                  <tr>
+                    <th className="py-3.5 px-4 font-bold">Item & Origin</th>
+                    <th className="py-3.5 px-3 text-center font-bold">Stock</th>
+                    <th className="py-3.5 px-3 text-right font-bold">Cost Basis</th>
+                    <th className="py-3.5 px-4 text-right font-bold">Market Price</th>
+                    <th className="py-3.5 px-4 text-right font-bold">Suggested Bazaar Price</th>
+                    <th className="py-3.5 px-4 text-right font-bold">Total Projected Profit</th>
+                    <th className="py-3.5 px-3 text-center font-bold">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-medium">
+                  {invLoading && filteredInventoryItems.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="py-12 text-center text-slate-400">
+                        <RefreshCw className="h-6 w-6 animate-spin mx-auto text-emerald-400 mb-2" />
+                        <span>Loading live player inventory...</span>
+                      </td>
+                    </tr>
+                  ) : filteredInventoryItems.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="py-12 text-center text-slate-500">
+                        No items found matching the selected category filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredInventoryItems.map((item) => {
+                      const sellingPrice = pricingMode === 'fast'
+                        ? item.pricing.fastTurnoverPrice
+                        : pricingMode === 'patient'
+                        ? item.pricing.patientPrice
+                        : item.pricing.marketPrice;
+                      const itemRev = item.amount * sellingPrice;
+                      const itemNet = itemRev - item.totalItemCost;
+                      const itemRoi = item.totalItemCost > 0 ? (itemNet / item.totalItemCost) * 100 : 100;
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-900/40 transition-colors">
+                          {/* Item & Origin Badge */}
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <img src={item.imageUrl} alt="" className="h-7 w-7 object-contain shrink-0" />
+                              <div>
+                                <div className="font-extrabold text-white text-xs">{item.name}</div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className={`text-[10px] font-mono px-2 py-0.2 rounded-full font-bold ${
+                                    item.originSource === 'legacy'
+                                      ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                                      : item.originSource === 'crime'
+                                      ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/30'
+                                      : item.originSource === 'abroad'
+                                      ? 'bg-sky-950/60 text-sky-300 border border-sky-500/30'
+                                      : 'bg-purple-950/60 text-purple-300 border border-purple-500/30'
+                                  }`}>
+                                    {item.originBadge}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">{item.itemType}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Stock Owned */}
+                          <td className="py-3 px-3 text-center">
+                            <span className="bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800 text-white font-mono font-bold">
+                              {item.amount}x
+                            </span>
+                          </td>
+
+                          {/* Cost Basis */}
+                          <td className="py-3 px-3 text-right font-mono">
+                            <div className={item.unitCost === 0 ? 'text-emerald-400 font-bold' : 'text-slate-300 font-medium'}>
+                              ${item.unitCost.toLocaleString()}
+                            </div>
+                            {item.unitCost === 0 && (
+                              <span className="text-[9px] text-emerald-500/80 block uppercase">100% Free</span>
+                            )}
+                          </td>
+
+                          {/* Market Value */}
+                          <td className="py-3 px-4 text-right font-mono font-medium text-slate-300">
+                            ${item.marketValue.toLocaleString()}
+                          </td>
+
+                          {/* Suggested Bazaar Price */}
+                          <td className="py-3 px-4 text-right font-mono">
+                            <span className="font-bold text-sky-400 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-800/40">
+                              ${sellingPrice.toLocaleString()}
+                            </span>
+                          </td>
+
+                          {/* Projected Profit */}
+                          <td className="py-3 px-4 text-right font-mono">
+                            <div className="font-black text-emerald-400 text-xs">
+                              +${Math.round(itemNet).toLocaleString()}
+                            </div>
+                            <div className="text-[10px] text-teal-300/80 font-normal">
+                              +{itemRoi.toFixed(0)}% ROI
+                            </div>
+                          </td>
+
+                          {/* Action Button: Load in Trade Pricer */}
+                          <td className="py-3 px-3 text-center">
+                            <button
+                              onClick={() => {
+                                handleSelectItemForPricer({
+                                  item_id: item.id,
+                                  name: item.name,
+                                  item_type: item.itemType,
+                                  market_value: item.marketValue,
+                                  image_url: item.imageUrl
+                                });
+                                setQuantity(item.amount);
+                                setActiveSubTab('pricer');
+                              }}
+                              className="text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded-lg border border-slate-700 transition-colors"
+                              title="Value in Trade Pricer"
+                            >
+                              Price Buy
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VIEW 3: MASTER ITEM CATALOG BROWSER (ALL 1,500+ ITEMS) */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'catalog' && (
+        <div className="space-y-6">
+
+          {/* Catalog Filter & Controls Card */}
+          <div className="glass-panel rounded-3xl p-6 border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Search className="h-4 w-4 text-emerald-400" />
+                  <span>Master Item Catalog ({catalogTotal} items in database)</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Search every item in Torn City with live market value and circulation stats
+                </p>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by item name or ID..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Category Pills & Sorting Bar */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+              {/* Category Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {['all', 'Drug', 'Booster', 'Medical', 'Temporary', 'Melee', 'Primary', 'Secondary', 'Defensive', 'Plushie', 'Flower', 'Energy Drink', 'Special', 'Supply Pack', 'Other'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => {
+                      setCatalogType(cat);
+                      setCatalogPage(0);
+                    }}
+                    className={`text-[11px] px-3 py-1.5 rounded-xl border font-semibold whitespace-nowrap transition-all ${
+                      catalogType.toLowerCase() === cat.toLowerCase()
+                        ? 'bg-slate-800 text-white border-slate-700 shadow-sm'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border-slate-900'
+                    }`}
+                  >
+                    {cat === 'all' ? 'All Categories' : cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="flex items-center gap-2 shrink-0 text-xs">
+                <span className="text-slate-400 text-xs">Sort:</span>
+                <select
+                  value={catalogSortBy}
+                  onChange={(e) => setCatalogSortBy(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
+                >
+                  <option value="market_value">Market Value (High to Low)</option>
+                  <option value="circulation">Circulation</option>
+                  <option value="name">Item Name</option>
+                  <option value="buy_price">Store Buy Price</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Item Grid */}
+          {catalogLoading ? (
+            <div className="py-20 text-center text-slate-400">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto text-emerald-400 mb-3" />
+              <span className="text-xs font-semibold">Loading Torn catalog...</span>
+            </div>
+          ) : catalogItems.length === 0 ? (
+            <div className="glass-panel rounded-3xl p-12 text-center text-slate-500">
+              No items found matching "{catalogSearch}".
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {catalogItems.map((item) => (
+                <div
+                  key={item.item_id}
+                  className="glass-panel rounded-2xl p-4 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between group space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="h-14 w-14 rounded-xl bg-slate-900/90 border border-slate-800/80 flex items-center justify-center p-2 shrink-0 group-hover:border-slate-700 transition-colors">
+                      <img src={item.image_url} alt="" className="h-full w-full object-contain" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] uppercase font-bold text-slate-500 block truncate">
+                        {item.item_type}
+                      </span>
+                      <h4 className="font-extrabold text-white text-xs truncate" title={item.name}>
+                        {item.name}
+                      </h4>
+                      <div className="text-[11px] font-mono font-bold text-emerald-400 mt-1">
+                        ${Number(item.market_value).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500">
+                    <span>Circ: {Number(item.circulation).toLocaleString()}</span>
+                    <button
+                      onClick={() => {
+                        handleSelectItemForPricer(item);
+                        setActiveSubTab('pricer');
+                      }}
+                      className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                    >
+                      <span>Trade Pricer</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {catalogTotal > pageSize && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <button
+                onClick={() => setCatalogPage(prev => Math.max(0, prev - 1))}
+                disabled={catalogPage === 0}
+                className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-xs font-bold text-slate-300 px-4 py-2 rounded-xl border border-slate-800"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-slate-400 font-mono px-3">
+                Page {catalogPage + 1} of {Math.ceil(catalogTotal / pageSize)}
+              </span>
+              <button
+                onClick={() => setCatalogPage(prev => Math.min(Math.ceil(catalogTotal / pageSize) - 1, prev + 1))}
+                disabled={(catalogPage + 1) * pageSize >= catalogTotal}
+                className="bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-xs font-bold text-slate-300 px-4 py-2 rounded-xl border border-slate-800"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+    </div>
+  );
+}

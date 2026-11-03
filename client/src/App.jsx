@@ -5,10 +5,11 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 
-// 6 Main Views
+// 7 Main Views
 import CommandCenter from './pages/CommandCenter';
 import IncomeLedger from './pages/IncomeLedger';
 import MuseumSetBuilder from './pages/MuseumSetBuilder';
+import ItemTradeHub from './pages/ItemTradeHub';
 import ProfitCalculator from './pages/ProfitCalculator';
 import LeftoversVault from './pages/LeftoversVault';
 import ExpensesVaultTracker from './pages/ExpensesVaultTracker';
@@ -59,6 +60,7 @@ export default function App() {
           {activeTab === 'dashboard' && <CommandCenter setActiveTab={setActiveTab} />}
           {activeTab === 'income' && <IncomeLedger />}
           {activeTab === 'museum' && <MuseumSetBuilder setActiveTab={setActiveTab} />}
+          {activeTab === 'itemhub' && <ItemTradeHub />}
           {activeTab === 'calculator' && <ProfitCalculator />}
           {activeTab === 'leftovers' && <LeftoversVault />}
           {activeTab === 'expenses' && <ExpensesVaultTracker />}

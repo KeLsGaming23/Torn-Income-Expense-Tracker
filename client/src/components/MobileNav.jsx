@@ -5,7 +5,8 @@ import {
   Sparkles, 
   Calculator,
   Boxes, 
-  ReceiptText 
+  ReceiptText,
+  Package 
 } from 'lucide-react';
 
 export default function MobileNav({ activeTab, setActiveTab }) {
@@ -13,6 +14,7 @@ export default function MobileNav({ activeTab, setActiveTab }) {
     { id: 'dashboard', label: 'Command', icon: LayoutDashboard },
     { id: 'income', label: 'Income', icon: TrendingUp },
     { id: 'museum', label: 'Museum', icon: Sparkles },
+    { id: 'itemhub', label: 'Trade Hub', icon: Package },
     { id: 'calculator', label: 'Calc', icon: Calculator },
     { id: 'leftovers', label: 'Leftovers', icon: Boxes },
     { id: 'expenses', label: 'Expenses', icon: ReceiptText },

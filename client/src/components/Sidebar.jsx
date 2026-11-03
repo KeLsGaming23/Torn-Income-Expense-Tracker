@@ -7,7 +7,8 @@ import {
   Boxes, 
   ReceiptText,
   Flame,
-  ShieldCheck
+  ShieldCheck,
+  Package
 } from 'lucide-react';
 import { useTornData } from '../context/TornDataContext';
 
@@ -24,6 +25,13 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       icon: Sparkles, 
       badge: readySets > 0 ? `${readySets} Sets Ready` : null,
       badgeColor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+    },
+    { 
+      id: 'itemhub', 
+      label: 'Item & Trade Hub', 
+      icon: Package,
+      badge: '✦ 90% Trade',
+      badgeColor: 'bg-sky-500/20 text-sky-400 border-sky-500/30'
     },
     { id: 'calculator', label: 'Profit Calculator', icon: Calculator },
     { id: 'leftovers', label: 'FIFO Leftovers Vault', icon: Boxes },
