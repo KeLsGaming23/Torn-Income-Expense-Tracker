@@ -52,6 +52,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
   // Custom Pricing State
   const [selectedPricingMode, setSelectedPricingMode] = useState('advisable'); // 'minimum', 'advisable', 'aggressive', 'custom'
   const [customPrice, setCustomPrice] = useState(45000);
+  const [showCalculationDetails, setShowCalculationDetails] = useState(false);
 
   const fetchSimulation = async () => {
     try {
@@ -809,36 +810,172 @@ export default function MuseumSetBuilder({ setActiveTab }) {
             </div>
           </div>
 
-          {/* Quick Actions & Torn External Navigation */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <a
-                href="https://www.torn.com/museum.php"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
-              >
-                <span>Exchange at Torn Museum</span>
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
+          {/* COLLAPSIBLE DETAILED ITEM EXPENSE & PROFIT BREAKDOWN */}
+          <div className="pt-1 space-y-3">
+            {/* Toggle Button */}
+            <button
+              onClick={() => setShowCalculationDetails(prev => !prev)}
+              className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/90 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 transition-all text-left group"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Coins className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors flex items-center gap-2">
+                    <span>{showCalculationDetails ? 'Hide Itemized Expense & Profit Breakdown' : 'Show Details (Itemized Expense & Net Income)'}</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold">
+                      {simulation?.items?.length || 0} items for {setCount} set(s)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {showCalculationDetails 
+                      ? 'Click to collapse back to the compact summary ledger' 
+                      : 'View exact acquisition origin, unit purchase price, total expense, and net profit per item'}
+                  </p>
+                </div>
+              </div>
 
-              <a
-                href="https://www.torn.com/pointsmarket.php"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-4 py-2.5 rounded-xl border border-slate-700 active:scale-95 transition-all"
-              >
-                <span>Points Market</span>
-                <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
-              </a>
-            </div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 group-hover:text-white transition-colors bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                <span>{showCalculationDetails ? 'Collapse' : 'Show Details'}</span>
+                {showCalculationDetails ? <ChevronUp className="h-4 w-4 text-emerald-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+              </div>
+            </button>
 
-            <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/60 border border-slate-800 px-3.5 py-2 rounded-xl">
-              <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-              <span>
-                <strong>100% Auto-Synced:</strong> Torn exchanges are imported directly via API Log 7000 without duplicate risk.
-              </span>
-            </div>
+            {/* Expanded Detailed Breakdown Table */}
+            {showCalculationDetails && (
+              <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden shadow-2xl animate-in fade-in duration-200">
+                <div className="p-3.5 bg-slate-900/80 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h5 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Itemized Cost Basis & Projected Net Profit ({setCount} Sets)</span>
+                    </h5>
+                    <p className="text-[11px] text-slate-400">
+                      Based on selling {pointsGenerated} points @ ${Number(activePrice).toLocaleString()}/pt (${Math.round(projectedRevenue / (simulation?.items?.length || 1)).toLocaleString()} gross revenue per item)
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300 self-start sm:self-auto">
+                    {setType === 'flower' ? '11 Flowers / Set' : '13 Plushies / Set'}
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="py-3 px-4 font-bold">Item & Where Acquired</th>
+                        <th className="py-3 px-3 text-center font-bold">Qty Needed</th>
+                        <th className="py-3 px-3 text-right font-bold">Unit Price / Cost</th>
+                        <th className="py-3 px-4 text-right font-bold">Total Expense</th>
+                        <th className="py-3 px-4 text-right font-bold">Value if Sold (@ ${Number(activePrice).toLocaleString()}/pt)</th>
+                        <th className="py-3 px-4 text-right font-bold">Net Income</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-medium font-mono text-[11px]">
+                      {simulation?.items?.map((item) => {
+                        const totalItemExpense = item.deductionCost || (setCount * item.buyPrice);
+                        const unitPrice = setCount > 0 ? Math.round(totalItemExpense / setCount) : item.buyPrice;
+                        
+                        // Revenue allocated per item in the set
+                        const totalItemsInSet = simulation?.items?.length || (setType === 'flower' ? 11 : 13);
+                        const allocatedItemRevenue = projectedRevenue / totalItemsInSet;
+                        const netItemProfit = allocatedItemRevenue - totalItemExpense;
+                        const itemRoi = totalItemExpense > 0 ? (netItemProfit / totalItemExpense) * 100 : 0;
+                        
+                        // Origin & Acquisition formatting
+                        const isLocal = item.country?.toLowerCase().includes('torn');
+                        const primaryBatchSource = item.batches?.[0]?.source;
+                        const acquisitionOrigin = isLocal 
+                          ? 'Local City (Bits & Bobs)' 
+                          : primaryBatchSource === 'bazaar'
+                          ? 'Player Bazaar'
+                          : primaryBatchSource === 'market'
+                          ? 'Item Market'
+                          : `Abroad (${item.country})`;
+
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-900/50 transition-colors">
+                            {/* Item & Origin */}
+                            <td className="py-3 px-4 font-sans">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{setType === 'flower' ? '🌸' : '🧸'}</span>
+                                <div>
+                                  <div className="font-bold text-white text-xs">{item.name}</div>
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-1.5 font-mono">
+                                    <span className="text-emerald-400/90">{acquisitionOrigin}</span>
+                                    {item.flightFormatted && (
+                                      <>
+                                        <span className="text-slate-600">•</span>
+                                        <span className="text-sky-400">✈ {item.flightFormatted}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Qty Needed */}
+                            <td className="py-3 px-3 text-center">
+                              <span className="bg-slate-900 px-2 py-0.5 rounded border border-slate-800 text-slate-200 font-bold">
+                                {setCount}x
+                              </span>
+                            </td>
+
+                            {/* Unit Cost */}
+                            <td className="py-3 px-3 text-right text-slate-300">
+                              ${unitPrice.toLocaleString()}
+                            </td>
+
+                            {/* Total Expense */}
+                            <td className="py-3 px-4 text-right font-bold text-amber-300">
+                              ${totalItemExpense.toLocaleString()}
+                            </td>
+
+                            {/* Value if Sold */}
+                            <td className="py-3 px-4 text-right text-sky-300">
+                              ${Math.round(allocatedItemRevenue).toLocaleString()}
+                            </td>
+
+                            {/* Net Income */}
+                            <td className="py-3 px-4 text-right">
+                              <div className="font-black text-emerald-400">
+                                +${Math.round(netItemProfit).toLocaleString()}
+                              </div>
+                              <div className="text-[10px] text-teal-300/80 font-normal">
+                                +{itemRoi.toFixed(0)}% ROI
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-slate-950 font-mono text-xs border-t-2 border-slate-800 font-bold">
+                      <tr>
+                        <td className="py-3 px-4 text-white uppercase text-[10px] font-sans">
+                          Total ({simulation?.items?.length || 0} Items for {setCount} Sets)
+                        </td>
+                        <td className="py-3 px-3 text-center text-slate-300">
+                          {setCount * (simulation?.items?.length || 0)} items
+                        </td>
+                        <td className="py-3 px-3 text-right text-slate-500">
+                          —
+                        </td>
+                        <td className="py-3 px-4 text-right text-amber-400 font-black">
+                          {formatMoney(totalFifoCost)}
+                        </td>
+                        <td className="py-3 px-4 text-right text-sky-400 font-black">
+                          {formatMoney(projectedRevenue)}
+                        </td>
+                        <td className="py-3 px-4 text-right text-emerald-400 font-black">
+                          <div>+{formatMoney(projectedNetProfit)}</div>
+                          <div className="text-[10px] text-teal-300 font-normal">+{projectedRoiPct.toFixed(1)}% ROI</div>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
