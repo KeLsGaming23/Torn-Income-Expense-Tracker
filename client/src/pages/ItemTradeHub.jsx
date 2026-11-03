@@ -19,7 +19,10 @@ import {
   Layers,
   Tag,
   AlertCircle,
-  Clock
+  Clock,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { 
   getItemsCatalog, 
@@ -162,6 +165,28 @@ export default function ItemTradeHub() {
   const [invCategoryFilter, setInvCategoryFilter] = useState('all');
   const [invSearch, setInvSearch] = useState('');
   const [pricingMode, setPricingMode] = useState('fast'); // 'fast' (-$1) | 'market' | 'patient' (+2%)
+  const [invSortField, setInvSortField] = useState('profit'); // 'name' | 'stock' | 'cost' | 'market' | 'bazaarPrice' | 'profit'
+  const [invSortOrder, setInvSortOrder] = useState('desc'); // 'asc' | 'desc'
+
+  const handleInvSort = (field) => {
+    if (invSortField === field) {
+      setInvSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setInvSortField(field);
+      setInvSortOrder(field === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  const renderInvSortIcon = (field) => {
+    if (invSortField !== field) {
+      return <ArrowUpDown className="h-3 w-3 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0" />;
+    }
+    return invSortOrder === 'asc' ? (
+      <ArrowUp className="h-3 w-3 text-emerald-400 shrink-0" />
+    ) : (
+      <ArrowDown className="h-3 w-3 text-emerald-400 shrink-0" />
+    );
+  };
 
   const fetchInventory = async (force = false) => {
     try {
@@ -184,15 +209,58 @@ export default function ItemTradeHub() {
     }
   }, [activeSubTab]);
 
-  // Filter inventory items
+  // Filter and sort inventory items
   const filteredInventoryItems = useMemo(() => {
     if (!inventoryData?.items) return [];
-    return inventoryData.items.filter(item => {
+    const filtered = inventoryData.items.filter(item => {
       const matchesCat = invCategoryFilter === 'all' || item.itemType?.toLowerCase() === invCategoryFilter.toLowerCase();
       const matchesSearch = !invSearch || item.name.toLowerCase().includes(invSearch.toLowerCase());
       return matchesCat && matchesSearch;
     });
-  }, [inventoryData, invCategoryFilter, invSearch]);
+
+    return [...filtered].sort((a, b) => {
+      let comparison = 0;
+      if (invSortField === 'name') {
+        comparison = (a.name || '').localeCompare(b.name || '');
+      } else if (invSortField === 'stock') {
+        comparison = (a.amount || 0) - (b.amount || 0);
+      } else if (invSortField === 'cost') {
+        comparison = (a.unitCost || 0) - (b.unitCost || 0);
+      } else if (invSortField === 'market') {
+        comparison = (a.marketValue || 0) - (b.marketValue || 0);
+      } else if (invSortField === 'bazaarPrice') {
+        const priceA = pricingMode === 'fast'
+          ? (a.pricing?.fastTurnoverPrice || a.marketValue || 0)
+          : pricingMode === 'patient'
+          ? (a.pricing?.patientPrice || a.marketValue || 0)
+          : (a.pricing?.marketPrice || a.marketValue || 0);
+        const priceB = pricingMode === 'fast'
+          ? (b.pricing?.fastTurnoverPrice || b.marketValue || 0)
+          : pricingMode === 'patient'
+          ? (b.pricing?.patientPrice || b.marketValue || 0)
+          : (b.pricing?.marketPrice || b.marketValue || 0);
+        comparison = priceA - priceB;
+      } else if (invSortField === 'profit') {
+        const priceA = pricingMode === 'fast'
+          ? (a.pricing?.fastTurnoverPrice || a.marketValue || 0)
+          : pricingMode === 'patient'
+          ? (a.pricing?.patientPrice || a.marketValue || 0)
+          : (a.pricing?.marketPrice || a.marketValue || 0);
+        const profitA = ((a.amount || 0) * priceA) - (a.totalItemCost || 0);
+
+        const priceB = pricingMode === 'fast'
+          ? (b.pricing?.fastTurnoverPrice || b.marketValue || 0)
+          : pricingMode === 'patient'
+          ? (b.pricing?.patientPrice || b.marketValue || 0)
+          : (b.pricing?.marketPrice || b.marketValue || 0);
+        const profitB = ((b.amount || 0) * priceB) - (b.totalItemCost || 0);
+
+        comparison = profitA - profitB;
+      }
+
+      return invSortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [inventoryData, invCategoryFilter, invSearch, invSortField, invSortOrder, pricingMode]);
 
   // Calculate dynamic totals based on chosen pricing mode (Fast / Market / Patient)
   const inventoryTotals = useMemo(() => {
@@ -752,12 +820,91 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                   <tr>
-                    <th className="py-3.5 px-4 font-bold">Item & Origin</th>
-                    <th className="py-3.5 px-3 text-center font-bold">Stock</th>
-                    <th className="py-3.5 px-3 text-right font-bold">Cost Basis</th>
-                    <th className="py-3.5 px-4 text-right font-bold">Market Price</th>
-                    <th className="py-3.5 px-4 text-right font-bold">Suggested Bazaar Price</th>
-                    <th className="py-3.5 px-4 text-right font-bold">Total Projected Profit</th>
+                    {/* Item & Origin */}
+                    <th 
+                      onClick={() => handleInvSort('name')}
+                      className={`py-3.5 px-4 font-bold cursor-pointer select-none transition-colors group ${
+                        invSortField === 'name' ? 'text-emerald-400 bg-slate-800/50' : 'hover:text-slate-200 hover:bg-slate-800/20'
+                      }`}
+                      title="Sort alphabetically by Item Name (A-Z / Z-A)"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Item & Origin</span>
+                        {renderInvSortIcon('name')}
+                      </div>
+                    </th>
+
+                    {/* Stock */}
+                    <th 
+                      onClick={() => handleInvSort('stock')}
+                      className={`py-3.5 px-3 font-bold text-center cursor-pointer select-none transition-colors group ${
+                        invSortField === 'stock' ? 'text-emerald-400 bg-slate-800/50' : 'hover:text-slate-200 hover:bg-slate-800/20'
+                      }`}
+                      title="Sort by Stock Quantity (High to Low / Low to High)"
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span>Stock</span>
+                        {renderInvSortIcon('stock')}
+                      </div>
+                    </th>
+
+                    {/* Cost Basis */}
+                    <th 
+                      onClick={() => handleInvSort('cost')}
+                      className={`py-3.5 px-3 font-bold text-right cursor-pointer select-none transition-colors group ${
+                        invSortField === 'cost' ? 'text-emerald-400 bg-slate-800/50' : 'hover:text-slate-200 hover:bg-slate-800/20'
+                      }`}
+                      title="Sort by Cost Basis (High to Low / Low to High)"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>Cost Basis</span>
+                        {renderInvSortIcon('cost')}
+                      </div>
+                    </th>
+
+                    {/* Market Price */}
+                    <th 
+                      onClick={() => handleInvSort('market')}
+                      className={`py-3.5 px-4 font-bold text-right cursor-pointer select-none transition-colors group ${
+                        invSortField === 'market' ? 'text-emerald-400 bg-slate-800/50' : 'hover:text-slate-200 hover:bg-slate-800/20'
+                      }`}
+                      title="Sort by Market Price (High to Low / Low to High)"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>Market Price</span>
+                        {renderInvSortIcon('market')}
+                      </div>
+                    </th>
+
+                    {/* Suggested Bazaar Price */}
+                    <th 
+                      onClick={() => handleInvSort('bazaarPrice')}
+                      className={`py-3.5 px-4 font-bold text-right cursor-pointer select-none transition-colors group ${
+                        invSortField === 'bazaarPrice' ? 'text-emerald-400 bg-slate-800/50' : 'hover:text-slate-200 hover:bg-slate-800/20'
+                      }`}
+                      title="Sort by Suggested Bazaar Price (High to Low / Low to High)"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>Suggested Bazaar Price</span>
+                        {renderInvSortIcon('bazaarPrice')}
+                      </div>
+                    </th>
+
+                    {/* Total Projected Profit */}
+                    <th 
+                      onClick={() => handleInvSort('profit')}
+                      className={`py-3.5 px-4 font-bold text-right cursor-pointer select-none transition-colors group ${
+                        invSortField === 'profit' ? 'text-emerald-400 bg-slate-800/50' : 'hover:text-slate-200 hover:bg-slate-800/20'
+                      }`}
+                      title="Sort by Total Projected Profit (High to Low / Low to High)"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>Total Projected Profit</span>
+                        {renderInvSortIcon('profit')}
+                      </div>
+                    </th>
+
+                    {/* Action */}
                     <th className="py-3.5 px-3 text-center font-bold">Action</th>
                   </tr>
                 </thead>
