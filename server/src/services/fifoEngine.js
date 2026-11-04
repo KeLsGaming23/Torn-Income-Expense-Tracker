@@ -72,8 +72,9 @@ export class FIFOEngine {
       };
     });
 
-    // Determine target sets to convert
-    const N = setCount && Number(setCount) > 0 ? Math.min(Number(setCount), Math.max(1, maxSets)) : Math.max(1, maxSets);
+    // Determine target sets to simulate/project (unclamped so users can project hypothetical future sets)
+    const requestedSets = setCount && Number(setCount) > 0 ? parseInt(setCount, 10) : null;
+    const N = requestedSets ? Math.min(requestedSets, 1000) : (maxSets > 0 ? maxSets : 1);
 
     // Calculate FIFO Cost of Goods Sold for N sets
     let totalFifoCost = 0;
