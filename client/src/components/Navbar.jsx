@@ -5,14 +5,13 @@ import {
   Coins, 
   Wallet, 
   ShieldAlert, 
-  Smartphone, 
   ShieldCheck,
   Building2,
   Sparkles
 } from 'lucide-react';
 
 export default function Navbar() {
-  const { commandData, syncStatus, syncing, syncTorn, installPrompt, promptPWAInstall, isInstalled } = useTornData();
+  const { commandData, syncStatus, syncing, syncTorn } = useTornData();
   const mugRisk = commandData?.mugRisk;
   const syncState = syncStatus?.syncState;
 
@@ -72,21 +71,8 @@ export default function Navbar() {
           </div>
         )}
 
-        {/* Right: Sync Button & PWA Install */}
+        {/* Right: Sync Button */}
         <div className="flex items-center gap-3">
-          
-          {/* Android PWA Install Button */}
-          {!isInstalled && (
-            <button
-              onClick={promptPWAInstall}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-md shadow-emerald-950/20 active:scale-95 transition-all"
-              title="Install Web App on Android or Desktop"
-            >
-              <Smartphone className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Install PWA</span>
-            </button>
-          )}
-
           {/* Sync Button */}
           <button
             onClick={syncTorn}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { simulateMuseumSet, addManualInventoryLot } from '../api';
+import { simulateMuseumSet } from '../api';
 import { useTornData } from '../context/TornDataContext';
-import Modal from '../components/Modal';
 import { 
   Sparkles, 
   ChevronDown, 
@@ -16,13 +15,9 @@ import {
   Layers,
   ArrowRight,
   ExternalLink,
-  Table as TableIcon,
-  LayoutGrid,
   Calculator,
-  ShieldCheck,
   RefreshCw,
   Plane,
-  Plus,
   Boxes
 } from 'lucide-react';
 
@@ -34,7 +29,6 @@ export default function MuseumSetBuilder({ setActiveTab }) {
   const [setCount, setSetCount] = useState(1);
   const [simulation, setSimulation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('table'); // 'table' (default) or 'grid'
   const [expandedItemIds, setExpandedItemIds] = useState(new Set());
 
   const toggleExpand = (itemId) => {
@@ -48,9 +42,6 @@ export default function MuseumSetBuilder({ setActiveTab }) {
       return next;
     });
   };
-
-  // Guide Collapsible
-  const [showGuide, setShowGuide] = useState(true);
 
   // Custom Pricing State
   const [selectedPricingMode, setSelectedPricingMode] = useState('advisable'); // 'minimum', 'advisable', 'aggressive', 'custom'
@@ -140,106 +131,9 @@ export default function MuseumSetBuilder({ setActiveTab }) {
     return { totalSurplusItems, surplusCapital, itemsWithSurplus };
   }, [simulation]);
 
-  // Add Manual Batch State
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [manualItemId, setManualItemId] = useState('');
-  const [manualQty, setManualQty] = useState(10);
-  const [manualCost, setManualCost] = useState('');
-  const [manualSource, setManualSource] = useState('abroad');
-  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 16));
-  const [submittingManual, setSubmittingManual] = useState(false);
-
-  useEffect(() => {
-    if (simulation?.items?.length > 0 && !manualItemId) {
-      setManualItemId(simulation.items[0].id);
-      setManualCost(simulation.items[0].buyPrice);
-    }
-  }, [simulation, manualItemId]);
-
-  const handleManualItemChange = (e) => {
-    const id = parseInt(e.target.value, 10);
-    setManualItemId(id);
-    const match = simulation?.items?.find(it => it.id === id);
-    if (match) setManualCost(match.buyPrice);
-  };
-
-  const handleAddManualLot = async (e) => {
-    e.preventDefault();
-    if (!manualItemId || !manualQty || !manualCost) {
-      showToast('error', 'Please fill in all batch fields');
-      return;
-    }
-    try {
-      setSubmittingManual(true);
-      const res = await addManualInventoryLot({
-        itemId: manualItemId,
-        source: manualSource,
-        qty: parseInt(manualQty, 10),
-        unitCost: Number(manualCost),
-        purchasedAt: manualDate
-      });
-      if (res.success) {
-        showToast('success', `Added batch of ${manualQty} items ($${(manualQty * Number(manualCost)).toLocaleString()})`);
-        setIsAddModalOpen(false);
-        fetchSimulation();
-        refresh();
-      } else {
-        showToast('error', res.message || 'Failed to add batch');
-      }
-    } catch (err) {
-      showToast('error', err.response?.data?.message || err.message || 'Failed to add batch');
-    } finally {
-      setSubmittingManual(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       
-      {/* 1. ONBOARDING 3-STEP GUIDE (COLLAPSIBLE) */}
-      <div className="glass-panel rounded-3xl border border-slate-800 overflow-hidden">
-        <div 
-          onClick={() => setShowGuide(!showGuide)}
-          className="p-4 bg-slate-900/60 flex items-center justify-between cursor-pointer hover:bg-slate-800/50 transition-colors"
-        >
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="h-4 w-4 text-emerald-400" />
-            <h3 className="font-extrabold text-sm text-white">How It Works: 3-Step Museum Point Arbitrage Guide</h3>
-          </div>
-          <button className="text-slate-400 p-1">
-            {showGuide ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-        </div>
-
-        {showGuide && (
-          <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-800 text-xs">
-            <div className="bg-slate-900/40 rounded-2xl p-4 border border-slate-800/80 space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">Step 1</span>
-              <h4 className="font-bold text-white text-sm">Sync or Log Items</h4>
-              <p className="text-slate-400 leading-relaxed">
-                Connect your Torn API key or log manual batches of foreign travel flowers and plushies. Every batch preserves its exact purchase cost.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/40 rounded-2xl p-4 border border-slate-800/80 space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block">Step 2</span>
-              <h4 className="font-bold text-white text-sm">Check FIFO Cost & Leftovers</h4>
-              <p className="text-slate-400 leading-relaxed">
-                The engine matches 1 of each required item using strict First-In, First-Out costing. Leftover items stay preserved for future complete sets.
-              </p>
-            </div>
-
-            <div className="bg-slate-900/40 rounded-2xl p-4 border border-slate-800/80 space-y-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">Step 3</span>
-              <h4 className="font-bold text-white text-sm">Pick Point Price & Profit</h4>
-              <p className="text-slate-400 leading-relaxed">
-                Choose between Fast Turnover (+2%), Live Market Undercut, or Patient Seller high price to maximize Torn Dollar profit margins.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Set Selector Tabs (Plushies vs Flowers) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-2xl border border-slate-800">
@@ -279,14 +173,6 @@ export default function MuseumSetBuilder({ setActiveTab }) {
               {formatMoney(simulation?.liveMarketPointPrice || 31599)} / pt
             </span>
           </div>
-
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add Batch</span>
-          </button>
 
           <button
             onClick={() => {
@@ -334,7 +220,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
         </div>
       )}
 
-      {/* 2. SET READINESS BREAKDOWN: TABLE & GRID VIEWS (INVENTORY FIRST) */}
+      {/* 2. SET READINESS BREAKDOWN (INVENTORY FIRST) */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -342,14 +228,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
               <h3 className="font-bold text-white text-sm uppercase tracking-wider">
                 Set Readiness Breakdown ({simulation?.items?.length || 0} items)
               </h3>
-              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                <ShieldCheck className="h-3 w-3" />
-                <span>Strict API Sync</span>
-              </span>
             </div>
-            <p className="text-xs text-slate-400">
-              Sorted from shortest to longest travel time • Live inventory synchronized directly from Torn API
-            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -365,34 +244,11 @@ export default function MuseumSetBuilder({ setActiveTab }) {
               <RefreshCw className={`h-3.5 w-3.5 ${syncing || loading ? 'animate-spin text-emerald-400' : 'text-slate-400'}`} />
               <span>{syncing ? 'Syncing...' : 'Sync Live Inventory'}</span>
             </button>
-
-            {/* Table vs Grid Toggle */}
-            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 shrink-0">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  viewMode === 'table' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <TableIcon className="h-3.5 w-3.5" />
-                <span>Table</span>
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  viewMode === 'grid' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                <span>Cards</span>
-              </button>
-            </div>
           </div>
         </div>
 
-        {viewMode === 'table' ? (
-          /* ZERO-CONFUSION REAL BATCHES TABLE VIEW */
-          <div className="glass-panel rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+        {/* REAL BATCHES TABLE VIEW */}
+        <div className="glass-panel rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-900/90 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
@@ -559,71 +415,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
               </table>
             </div>
           </div>
-        ) : (
-          /* CARD GRID VIEW */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {simulation?.items?.map((item) => (
-              <div
-                key={item.id}
-                className={`rounded-2xl p-4 border transition-all ${
-                  item.isBottleneck
-                    ? 'bg-amber-500/10 border-amber-500/40 shadow-sm shadow-amber-950/20'
-                    : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-white truncate max-w-[140px]" title={item.name}>
-                    {item.name}
-                  </span>
-                  <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
-                    item.isBottleneck 
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
-                      : 'bg-slate-800 text-slate-300'
-                  }`}>
-                    {item.ownedCount} owned
-                  </span>
-                </div>
-
-                <div className="space-y-1.5 text-[11px] text-slate-400">
-                  <div className="flex justify-between items-center">
-                    <span>Origin / Flight:</span>
-                    <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                      <span>{item.country}</span>
-                      {item.flightFormatted && (
-                        <span className="text-[10px] font-mono text-sky-400 bg-sky-950/50 px-1.5 py-0.5 rounded border border-sky-800/40 inline-flex items-center gap-1">
-                          <Plane className="h-2.5 w-2.5" />
-                          <span>{item.flightFormatted}</span>
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block mb-0.5">Batches in Vault:</span>
-                    {item.batches && item.batches.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {item.batches.map((b, idx) => (
-                          <span key={idx} className="font-mono text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-slate-300">
-                            <strong className="text-emerald-400">{b.qty}x</strong> @ ${b.unitCost.toLocaleString()}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-slate-500 text-[10px] italic">0 in stock</span>
-                    )}
-                  </div>
-                </div>
-
-                {item.isBottleneck && (
-                  <div className="mt-2.5 pt-2 border-t border-amber-500/20 text-[10px] text-amber-300 font-semibold flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3 shrink-0" />
-                    <span>Bottleneck: limits ready sets</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        </div>
 
       {/* 3. PROJECTED INCOME & POINT MARKET CALCULATOR (ALL NUMBERS VISIBLE) */}
       <div id="projected-income-calculator" className="space-y-5 pt-4 border-t border-slate-800/80">
@@ -1166,110 +958,6 @@ export default function MuseumSetBuilder({ setActiveTab }) {
           </div>
         </div>
       </div>
-
-      {/* Manual Batch Ingestion Modal */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title={`Log Offline / Trade Batch (${setType === 'flower' ? 'Flowers' : 'Plushies'})`}
-        maxWidth="max-w-md"
-      >
-        <form onSubmit={handleAddManualLot} className="space-y-4">
-          <p className="text-xs text-slate-400">
-            Log foreign travel runs or trade buys with exact unit cost basis to keep FIFO sets accurate.
-          </p>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1">Select Item</label>
-            <select
-              value={manualItemId}
-              onChange={handleManualItemChange}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-            >
-              {simulation?.items?.map(it => (
-                <option key={it.id} value={it.id}>
-                  {it.name} ({it.country || 'Torn'}) — Official abroad price: ${it.buyPrice?.toLocaleString()}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Quantity</label>
-              <input
-                type="number"
-                min="1"
-                value={manualQty}
-                onChange={(e) => setManualQty(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Unit Cost ($)</label>
-              <input
-                type="number"
-                min="0"
-                value={manualCost}
-                onChange={(e) => setManualCost(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Total Batch Spend:</span>
-            <span className="text-sm font-bold font-mono text-emerald-400">
-              {formatMoney(Number(manualQty || 0) * Number(manualCost || 0))}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Acquisition Source</label>
-              <select
-                value={manualSource}
-                onChange={(e) => setManualSource(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-              >
-                <option value="abroad">Abroad Travel Run</option>
-                <option value="trade">Player Trade (90%)</option>
-                <option value="bazaar">Player Bazaar</option>
-                <option value="market">Item Market</option>
-                <option value="manual">Manual Ingestion</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Date & Time</label>
-              <input
-                type="datetime-local"
-                value={manualDate}
-                onChange={(e) => setManualDate(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submittingManual}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition-colors shadow-md shadow-blue-950/30"
-            >
-              {submittingManual ? 'Saving Batch...' : 'Add FIFO Lot'}
-            </button>
-          </div>
-        </form>
-      </Modal>
 
     </div>
   );
