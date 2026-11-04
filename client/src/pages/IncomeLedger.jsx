@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getIncome, logIncome, deleteIncome } from '../api';
+import { getIncome, deleteIncome } from '../api';
 import { useTornData } from '../context/TornDataContext';
-import Modal from '../components/Modal';
 import { 
   TrendingUp, 
-  Plus, 
   Trash2, 
   ExternalLink,
   Target, 
@@ -22,8 +20,7 @@ import {
   PieChart, 
   Pie, 
   Cell, 
-  Tooltip, 
-  Legend 
+  Tooltip 
 } from 'recharts';
 
 const INCOME_COLORS = {
@@ -49,19 +46,44 @@ const CATEGORY_LABELS = {
   faction_payout: 'Faction Payout'
 };
 
+function CustomPieTooltip({ active, payload, totalSum }) {
+  if (active && payload && payload.length) {
+    const data = payload[0];
+    const categoryKey = data.payload.categoryKey;
+    const color = INCOME_COLORS[categoryKey] || '#10b981';
+    const amount = Number(data.value || 0);
+    const pct = totalSum > 0 ? ((amount / totalSum) * 100).toFixed(1) : 0;
+
+    return (
+      <div 
+        className="bg-[#0b101b] border-2 shadow-2xl rounded-2xl p-3.5 text-xs backdrop-blur-md min-w-[200px]"
+        style={{ borderColor: color }}
+      >
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: color }} />
+          <span className="font-extrabold text-white text-xs tracking-wide">
+            {data.name}
+          </span>
+        </div>
+        <div className="font-mono font-black text-emerald-400 text-sm">
+          +${amount.toLocaleString()}
+        </div>
+        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono mt-1.5 pt-1.5 border-t border-slate-800">
+          <span>{pct}% of income</span>
+          <span className="text-emerald-400 font-bold">Click to filter</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function IncomeLedger() {
   const { showToast, refresh, syncStatus } = useTornData();
   const [incomeData, setIncomeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
-
-  // Quick Log Modal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [category, setCategory] = useState('trade_income');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [loggedAt, setLoggedAt] = useState(new Date().toISOString().slice(0, 16));
-  const [submitting, setSubmitting] = useState(false);
+  const [hoveredCategory, setHoveredCategory] = useState(null);
 
   const fetchIncomeList = async () => {
     try {
@@ -83,37 +105,6 @@ export default function IncomeLedger() {
   useEffect(() => {
     fetchIncomeList();
   }, [selectedCategory, syncStatus?.syncState?.last_synced_at]);
-
-  const handleQuickLog = (presetCat, defaultAmt, defaultDesc) => {
-    setCategory(presetCat);
-    setAmount(defaultAmt || '');
-    setDescription(defaultDesc || '');
-    setLoggedAt(new Date().toISOString().slice(0, 16));
-    setIsModalOpen(true);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setSubmitting(true);
-      const res = await logIncome({
-        category,
-        amount: Number(amount),
-        description,
-        loggedAt
-      });
-      if (res.success) {
-        showToast('success', `Logged ${CATEGORY_LABELS[category] || category} of $${Number(amount).toLocaleString()}`);
-        setIsModalOpen(false);
-        await fetchIncomeList();
-        await refresh(true);
-      }
-    } catch (err) {
-      showToast('error', err.response?.data?.message || err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this income entry?')) return;
@@ -146,6 +137,23 @@ export default function IncomeLedger() {
     categoryKey: b.category
   }));
 
+  // Active category for Donut center display & slice highlight
+  const activeCat = hoveredCategory || (selectedCategory !== 'all' ? selectedCategory : 'all');
+  const activeItem = breakdown.find(b => b.category === activeCat);
+
+  let activeCenterLabel = 'TOTAL INFLOW';
+  let activeCenterAmount = `+$${totalSum.toLocaleString()}`;
+  let activeCenterSub = `${totalCount} transactions`;
+  let activeCenterColor = '#10b981';
+
+  if (activeCat !== 'all' && activeItem) {
+    const pct = totalSum > 0 ? ((Number(activeItem.amount) / totalSum) * 100).toFixed(1) : 0;
+    activeCenterLabel = (CATEGORY_LABELS[activeCat] || activeCat).toUpperCase();
+    activeCenterAmount = `+$${Number(activeItem.amount).toLocaleString()}`;
+    activeCenterSub = `${pct}% of total (${activeItem.count} ${activeItem.count === 1 ? 'tx' : 'txs'})`;
+    activeCenterColor = INCOME_COLORS[activeCat] || '#38bdf8';
+  }
+
   return (
     <div className="space-y-6">
       {/* HEADER STRIP */}
@@ -159,14 +167,6 @@ export default function IncomeLedger() {
             Track multi-source earnings: Personal Trades, Points Sales, Crimes 2.0, Bazaar, & Mugging.
           </p>
         </div>
-
-        <button
-          onClick={() => handleQuickLog('trade_income', '', '')}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs md:text-sm px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-950/20 active:scale-95 transition-all self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Log Income</span>
-        </button>
       </div>
 
       {/* KPI STAT CARDS */}
@@ -253,19 +253,21 @@ export default function IncomeLedger() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-6">
-            {/* Donut Chart */}
-            <div className="h-56 w-full flex items-center justify-center">
+            {/* Donut Chart with Center Display */}
+            <div className="relative h-64 w-full flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={chartData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={55}
-                    outerRadius={80}
+                    innerRadius={68}
+                    outerRadius={95}
                     paddingAngle={4}
                     dataKey="value"
                     cursor="pointer"
+                    onMouseEnter={(entry) => setHoveredCategory(entry.categoryKey)}
+                    onMouseLeave={() => setHoveredCategory(null)}
                     onClick={(entry) => {
                       if (entry && entry.categoryKey) {
                         setSelectedCategory(selectedCategory === entry.categoryKey ? 'all' : entry.categoryKey);
@@ -273,32 +275,39 @@ export default function IncomeLedger() {
                     }}
                   >
                     {chartData.map((entry, index) => {
-                      const isSelected = selectedCategory === entry.categoryKey;
-                      const isFaded = selectedCategory !== 'all' && !isSelected;
+                      const isHighlighted = (activeCat !== 'all' && activeCat === entry.categoryKey);
+                      const isFaded = (activeCat !== 'all' && activeCat !== entry.categoryKey);
                       return (
                         <Cell 
                           key={`cell-${index}`} 
                           fill={INCOME_COLORS[entry.categoryKey] || '#64748b'} 
                           opacity={isFaded ? 0.35 : 1}
-                          stroke={isSelected ? '#ffffff' : 'none'}
-                          strokeWidth={isSelected ? 2 : 0}
+                          stroke={isHighlighted ? '#ffffff' : 'none'}
+                          strokeWidth={isHighlighted ? 2.5 : 0}
                         />
                       );
                     })}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                    backgroundColor: '#0f172a', 
-                    borderColor: '#334155', 
-                    borderRadius: '1rem',
-                    color: '#f8fafc',
-                    fontSize: '12px'
-                  }} 
-                  formatter={(val) => `$${Number(val).toLocaleString()}`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+                  <Tooltip content={<CustomPieTooltip totalSum={totalSum} />} />
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Center Donut Hole Readout */}
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-4">
+                <span 
+                  className="text-[10px] font-black uppercase tracking-wider transition-colors max-w-[130px] truncate"
+                  style={{ color: activeCenterColor }}
+                >
+                  {activeCenterLabel}
+                </span>
+                <span className="text-base sm:text-lg font-black text-white font-mono tracking-tight mt-0.5">
+                  {activeCenterAmount}
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 mt-0.5 font-mono">
+                  {activeCenterSub}
+                </span>
+              </div>
+            </div>
 
             {/* Interactive Stream Cards (No Overflow, Active Only) */}
             <div className="space-y-2">
@@ -478,74 +487,6 @@ export default function IncomeLedger() {
           </table>
         </div>
       </div>
-
-      {/* QUICK LOG MODAL */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Log Inflow / Income">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Stream Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
-            >
-              {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Amount ($ Cash)</label>
-            <input
-              type="number"
-              placeholder="e.g. 5000000"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Description / Memo</label>
-            <input
-              type="text"
-              placeholder="e.g. Sold plushie batch or completed mug"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Date & Time</label>
-            <input
-              type="datetime-local"
-              value={loggedAt}
-              onChange={(e) => setLoggedAt(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2.5 pt-2">
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white bg-slate-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {submitting ? 'Saving...' : 'Save Income'}
-            </button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 }
