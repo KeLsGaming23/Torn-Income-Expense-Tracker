@@ -51,7 +51,7 @@ const CATEGORY_LABELS = {
 };
 
 export default function IncomeLedger() {
-  const { showToast, refresh } = useTornData();
+  const { showToast, refresh, syncStatus } = useTornData();
   const [incomeData, setIncomeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -83,7 +83,7 @@ export default function IncomeLedger() {
 
   useEffect(() => {
     fetchIncomeList();
-  }, [selectedCategory]);
+  }, [selectedCategory, syncStatus?.syncState?.last_synced_at]);
 
   const handleQuickLog = (presetCat, defaultAmt, defaultDesc) => {
     setCategory(presetCat);

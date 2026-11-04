@@ -133,7 +133,13 @@ export class TornSyncService {
     // 1. Get last_log_timestamp from sync_state
     const [stateRows] = await pool.query(`SELECT last_log_timestamp FROM sync_state WHERE id = 1`);
     const lastTimestamp = stateRows[0]?.last_log_timestamp ? Number(stateRows[0].last_log_timestamp) : 0;
-    const isDeepSync = options.deepSync || lastTimestamp === 0;
+
+    // Auto-detect if database needs an initial 35-day historical backfill for crimes and bazaar sales
+    const [incomeCount] = await pool.query(
+      `SELECT COUNT(*) as count FROM income_ledger WHERE category IN ('crimes', 'bazaar_sale')`
+    );
+    const needsBackfill = Number(incomeCount[0]?.count || 0) === 0;
+    const isDeepSync = options.deepSync || lastTimestamp === 0 || needsBackfill;
 
     let importedLots = 0;
     let importedExpenses = 0;
