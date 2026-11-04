@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { simulateMuseumSet } from '../api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { simulateMuseumSet, addManualInventoryLot } from '../api';
 import { useTornData } from '../context/TornDataContext';
+import Modal from '../components/Modal';
 import { 
   Sparkles, 
   ChevronDown, 
@@ -20,7 +21,9 @@ import {
   Calculator,
   ShieldCheck,
   RefreshCw,
-  Plane
+  Plane,
+  Plus,
+  Boxes
 } from 'lucide-react';
 
 export default function MuseumSetBuilder({ setActiveTab }) {
@@ -95,6 +98,88 @@ export default function MuseumSetBuilder({ setActiveTab }) {
   const projectedRoiPct = totalFifoCost > 0 ? (projectedNetProfit / totalFifoCost) * 100 : 0;
 
   const formatMoney = (val) => '$' + Number(val || 0).toLocaleString();
+
+  // Surplus Leftovers Calculation (Items owned beyond complete ready sets)
+  const surplusStats = useMemo(() => {
+    if (!simulation?.items) return { totalSurplusItems: 0, surplusCapital: 0, itemsWithSurplus: [] };
+    const maxSets = simulation.maxSets || 0;
+    let totalSurplusItems = 0;
+    let surplusCapital = 0;
+    const itemsWithSurplus = [];
+
+    simulation.items.forEach(item => {
+      const owned = item.ownedCount || 0;
+      const surplus = Math.max(0, owned - maxSets);
+      if (surplus > 0) {
+        const avgCost = Number(item.avgCost || item.buyPrice || 0);
+        const capital = surplus * avgCost;
+        totalSurplusItems += surplus;
+        surplusCapital += capital;
+        itemsWithSurplus.push({
+          id: item.id,
+          name: item.name,
+          surplus,
+          avgCost,
+          capital
+        });
+      }
+    });
+
+    return { totalSurplusItems, surplusCapital, itemsWithSurplus };
+  }, [simulation]);
+
+  // Add Manual Batch State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [manualItemId, setManualItemId] = useState('');
+  const [manualQty, setManualQty] = useState(10);
+  const [manualCost, setManualCost] = useState('');
+  const [manualSource, setManualSource] = useState('abroad');
+  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 16));
+  const [submittingManual, setSubmittingManual] = useState(false);
+
+  useEffect(() => {
+    if (simulation?.items?.length > 0 && !manualItemId) {
+      setManualItemId(simulation.items[0].id);
+      setManualCost(simulation.items[0].buyPrice);
+    }
+  }, [simulation, manualItemId]);
+
+  const handleManualItemChange = (e) => {
+    const id = parseInt(e.target.value, 10);
+    setManualItemId(id);
+    const match = simulation?.items?.find(it => it.id === id);
+    if (match) setManualCost(match.buyPrice);
+  };
+
+  const handleAddManualLot = async (e) => {
+    e.preventDefault();
+    if (!manualItemId || !manualQty || !manualCost) {
+      showToast('error', 'Please fill in all batch fields');
+      return;
+    }
+    try {
+      setSubmittingManual(true);
+      const res = await addManualInventoryLot({
+        itemId: manualItemId,
+        source: manualSource,
+        qty: parseInt(manualQty, 10),
+        unitCost: Number(manualCost),
+        purchasedAt: manualDate
+      });
+      if (res.success) {
+        showToast('success', `Added batch of ${manualQty} items ($${(manualQty * Number(manualCost)).toLocaleString()})`);
+        setIsAddModalOpen(false);
+        fetchSimulation();
+        refresh();
+      } else {
+        showToast('error', res.message || 'Failed to add batch');
+      }
+    } catch (err) {
+      showToast('error', err.response?.data?.message || err.message || 'Failed to add batch');
+    } finally {
+      setSubmittingManual(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -183,17 +268,59 @@ export default function MuseumSetBuilder({ setActiveTab }) {
             </span>
           </div>
 
-          {setActiveTab && (
-            <button
-              onClick={() => setActiveTab('calculator')}
-              className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
-            >
-              <Calculator className="h-3.5 w-3.5" />
-              <span>Profit Calculator</span>
-            </button>
-          )}
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-1.5 bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Batch</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const el = document.getElementById('projected-income-calculator');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+          >
+            <Calculator className="h-3.5 w-3.5" />
+            <span>Profit Calculator</span>
+          </button>
         </div>
       </div>
+
+      {/* Integrated Surplus Leftovers Summary Card */}
+      {surplusStats.totalSurplusItems > 0 && (
+        <div className="bg-gradient-to-r from-amber-950/20 via-slate-900 to-slate-900 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Boxes className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-white">Surplus Leftovers in Vault</h4>
+                <span className="text-[10px] font-mono font-bold bg-amber-950/60 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                  {surplusStats.totalSurplusItems} Extra {setType === 'flower' ? 'Flowers' : 'Plushies'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                You have {surplusStats.totalSurplusItems} items across {surplusStats.itemsWithSurplus.length} types stored beyond your complete sets ({formatMoney(surplusStats.surplusCapital)} cost basis).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('itemhub')}
+                className="w-full sm:w-auto text-xs font-bold px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>View in Trade Hub</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 2. SET READINESS BREAKDOWN: TABLE & GRID VIEWS (INVENTORY FIRST) */}
       <div className="space-y-3">
@@ -487,7 +614,7 @@ export default function MuseumSetBuilder({ setActiveTab }) {
       </div>
 
       {/* 3. PROJECTED INCOME & POINT MARKET CALCULATOR (ALL NUMBERS VISIBLE) */}
-      <div className="space-y-5 pt-4 border-t border-slate-800/80">
+      <div id="projected-income-calculator" className="space-y-5 pt-4 border-t border-slate-800/80">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="font-bold text-white text-base flex items-center gap-2">
@@ -979,6 +1106,110 @@ export default function MuseumSetBuilder({ setActiveTab }) {
           </div>
         </div>
       </div>
+
+      {/* Manual Batch Ingestion Modal */}
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title={`Log Offline / Trade Batch (${setType === 'flower' ? 'Flowers' : 'Plushies'})`}
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handleAddManualLot} className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Log foreign travel runs or trade buys with exact unit cost basis to keep FIFO sets accurate.
+          </p>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-300 mb-1">Select Item</label>
+            <select
+              value={manualItemId}
+              onChange={handleManualItemChange}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+            >
+              {simulation?.items?.map(it => (
+                <option key={it.id} value={it.id}>
+                  {it.name} ({it.country || 'Torn'}) — Official abroad price: ${it.buyPrice?.toLocaleString()}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                value={manualQty}
+                onChange={(e) => setManualQty(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Unit Cost ($)</label>
+              <input
+                type="number"
+                min="0"
+                value={manualCost}
+                onChange={(e) => setManualCost(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+            <span className="text-slate-400">Total Batch Spend:</span>
+            <span className="text-sm font-bold font-mono text-emerald-400">
+              {formatMoney(Number(manualQty || 0) * Number(manualCost || 0))}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Acquisition Source</label>
+              <select
+                value={manualSource}
+                onChange={(e) => setManualSource(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="abroad">Abroad Travel Run</option>
+                <option value="trade">Player Trade (90%)</option>
+                <option value="bazaar">Player Bazaar</option>
+                <option value="market">Item Market</option>
+                <option value="manual">Manual Ingestion</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1">Date & Time</label>
+              <input
+                type="datetime-local"
+                value={manualDate}
+                onChange={(e) => setManualDate(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submittingManual}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition-colors shadow-md shadow-blue-950/30"
+            >
+              {submittingManual ? 'Saving Batch...' : 'Add FIFO Lot'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
     </div>
   );

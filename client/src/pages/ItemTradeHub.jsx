@@ -35,8 +35,10 @@ import {
 } from '../api';
 import { useTornData } from '../context/TornDataContext';
 
-export default function ItemTradeHub() {
-  const { showToast } = useTornData();
+export default function ItemTradeHub({ setActiveTab }) {
+  const { showToast, commandData } = useTornData();
+  const readyPlushies = commandData?.setsReady?.plushie || 0;
+  const readyFlowers = commandData?.setsReady?.flower || 0;
 
   // Active Sub-Tab: 'pricer' | 'bazaar' | 'catalog'
   const [activeSubTab, setActiveSubTab] = useState('pricer');
@@ -232,7 +234,16 @@ export default function ItemTradeHub() {
   const filteredInventoryItems = useMemo(() => {
     if (!inventoryData?.items) return [];
     const filtered = inventoryData.items.filter(item => {
-      const matchesCat = invCategoryFilter === 'all' || item.itemType?.toLowerCase() === invCategoryFilter.toLowerCase();
+      let matchesCat = false;
+      if (invCategoryFilter === 'all') {
+        matchesCat = true;
+      } else if (invCategoryFilter === 'surplus') {
+        const isPlushie = item.itemType?.toLowerCase() === 'plushie';
+        const isFlower = item.itemType?.toLowerCase() === 'flower';
+        matchesCat = (isPlushie && (item.amount || 0) > readyPlushies) || (isFlower && (item.amount || 0) > readyFlowers);
+      } else {
+        matchesCat = item.itemType?.toLowerCase() === invCategoryFilter.toLowerCase();
+      }
       const matchesSearch = !invSearch || item.name.toLowerCase().includes(invSearch.toLowerCase());
       return matchesCat && matchesSearch;
     });
@@ -801,7 +812,7 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
 
               {/* Category Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 scrollbar-none">
-                {['all', 'Drug', 'Supply Pack', 'Temporary', 'Melee', 'Primary', 'Secondary', 'Defensive', 'Plushie', 'Flower', 'Other'].map((cat) => (
+                {['all', 'surplus', 'Drug', 'Supply Pack', 'Temporary', 'Melee', 'Primary', 'Secondary', 'Defensive', 'Plushie', 'Flower', 'Other'].map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setInvCategoryFilter(cat)}
@@ -811,7 +822,7 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                         : 'bg-slate-950 text-slate-400 hover:text-slate-200 border-slate-900'
                     }`}
                   >
-                    {cat === 'all' ? 'All Items' : cat}
+                    {cat === 'all' ? 'All Items' : cat === 'surplus' ? '📦 Surplus Leftovers' : cat}
                   </button>
                 ))}
               </div>
@@ -935,6 +946,13 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                       const itemRoi = itemCost > 0 ? (itemNet / itemCost) * 100 : 100;
                       const batchCount = item.batches?.length || 0;
                       const isExpanded = expandedItemBatches.has(item.id);
+                      const isPlushie = item.itemType?.toLowerCase() === 'plushie';
+                      const isFlower = item.itemType?.toLowerCase() === 'flower';
+                      const surplusCount = isPlushie 
+                        ? Math.max(0, (item.amount || 0) - readyPlushies) 
+                        : isFlower 
+                        ? Math.max(0, (item.amount || 0) - readyFlowers) 
+                        : 0;
 
                       return (
                         <React.Fragment key={item.id}>
@@ -964,6 +982,14 @@ Total Cash Payout: $${tradeCalculation.totalPayout.toLocaleString()}`}
                                     >
                                       {item.originBadge}
                                     </span>
+                                    {surplusCount > 0 && (
+                                      <span 
+                                        className="text-[10px] font-mono px-2 py-0.2 rounded-full font-bold bg-amber-950/60 text-amber-300 border border-amber-500/30"
+                                        title={`${surplusCount} extra units owned beyond complete sets`}
+                                      >
+                                        +{surplusCount} Surplus
+                                      </span>
+                                    )}
                                     <span className="text-[10px] text-slate-500">{item.itemType}</span>
                                   </div>
                                 </div>
