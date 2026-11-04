@@ -363,7 +363,8 @@ export class TornSyncService {
         // C. Trades & Outgoing Items (FIFO Deductions)
         const isOutgoing = (title.includes('trade') && (title.includes('outgoing') || title.includes('add'))) ||
                            (title.includes('item') && title.includes('send')) ||
-                           (title.includes('bazaar') && title.includes('customer buy'));
+                           Number(entry.log) === 1226 ||
+                           (title.includes('bazaar') && (title.includes('sell') || title.includes('customer buy')));
 
         if (isOutgoing) {
           const items = data.items || (data.item ? [{ id: data.item, qty: data.quantity || 1 }] : []);
@@ -442,12 +443,15 @@ export class TornSyncService {
           }
         }
 
-        // E. Crimes 2.0 Cash Gain (Log 9015)
-        const isCrimeMoney = Number(entry.log) === 9015 || (title.includes('crime') && (data.money_gain > 0 || data.money > 0));
+        // E. Crimes 2.0 Cash Gain (Log 9015, 9010, or crime cash)
+        const isCrimeMoney = Number(entry.log) === 9015 || 
+                             Number(entry.log) === 9010 || 
+                             (title.includes('crime') && (data.money_gained > 0 || data.money_gain > 0 || data.money > 0));
         if (isCrimeMoney) {
-          const crimeMoney = Number(data.money_gain || data.money || 0);
+          const crimeMoney = Number(data.money_gained || data.money_gain || data.money || 0);
           if (crimeMoney > 0) {
-            const crimeDesc = data.crime_name ? `Crime: ${data.crime_name}` : (entry.title || 'Crimes 2.0 Gain');
+            const crimeAction = data.crime_action || data.crime_name || entry.title || 'Crimes 2.0 Cash Gain';
+            const crimeDesc = `Crime: ${crimeAction} (+$${crimeMoney.toLocaleString()})`;
             try {
               const [incRes] = await pool.query(
                 `INSERT IGNORE INTO income_ledger 
@@ -462,14 +466,51 @@ export class TornSyncService {
           }
         }
 
-        // F. Bazaar Sales (Log 1210)
-        const isBazaarSale = Number(entry.log) === 1210 || (title.includes('bazaar') && title.includes('customer buy'));
-        if (isBazaarSale) {
-          const bazaarRevenue = Number(data.cost_total || data.cost || data.price || (data.cost_each && data.quantity ? data.cost_each * data.quantity : 0) || 0);
+        // F. Bazaar & Item Market Sales (Log 1226, 1210, 1110)
+        const isBazaarSale = Number(entry.log) === 1226 || 
+                             Number(entry.log) === 1210 || 
+                             (title.includes('bazaar') && (title.includes('sell') || title.includes('customer buy')));
+        const isMarketSale = Number(entry.log) === 1110 || (title.includes('item market') && title.includes('sell'));
+
+        if (isBazaarSale || isMarketSale) {
+          const bazaarRevenue = Number(
+            data.cost_total || 
+            data.cost || 
+            data.price || 
+            (data.cost_each && data.quantity ? data.cost_each * data.quantity : 0) ||
+            (data.cost_each && data.items?.[0]?.qty ? data.cost_each * data.items[0].qty : 0) ||
+            0
+          );
           if (bazaarRevenue > 0) {
-            const buyer = data.buyer_name || data.player || 'Customer';
-            const itemName = data.item_name || (data.item ? `Item #${data.item}` : 'Items');
-            const desc = `Bazaar: ${data.quantity ? data.quantity + 'x ' : ''}${itemName} sold to ${buyer}`;
+            const buyer = data.buyer_name || data.player || (data.buyer ? `Player #${data.buyer}` : 'Customer');
+            let itemDesc = 'Items';
+
+            if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+              const firstId = Number(data.items[0].id);
+              let itemName = null;
+              if (ALL_MUSEUM_ITEMS_MAP.has(firstId)) {
+                itemName = ALL_MUSEUM_ITEMS_MAP.get(firstId).name;
+              } else {
+                try {
+                  const [catRow] = await pool.query('SELECT name FROM master_items_cache WHERE item_id = ?', [firstId]);
+                  if (catRow[0]?.name) itemName = catRow[0].name;
+                } catch (e) {}
+              }
+              const qty = Number(data.items[0].qty || 1);
+              itemDesc = itemName 
+                ? (data.items.length === 1 ? `${qty}x ${itemName}` : `${qty}x ${itemName} + ${data.items.length - 1} more items`)
+                : `Item #${firstId}`;
+            } else if (data.item_name) {
+              itemDesc = `${data.quantity ? data.quantity + 'x ' : ''}${data.item_name}`;
+            } else if (data.item) {
+              const itemId = Number(data.item);
+              const name = ALL_MUSEUM_ITEMS_MAP.get(itemId)?.name || `Item #${itemId}`;
+              itemDesc = `${data.quantity ? data.quantity + 'x ' : ''}${name}`;
+            }
+
+            const prefix = isMarketSale ? 'Item Market' : 'Bazaar';
+            const desc = `${prefix}: ${itemDesc} sold to ${buyer}`;
+
             try {
               const [incRes] = await pool.query(
                 `INSERT IGNORE INTO income_ledger 
@@ -481,6 +522,26 @@ export class TornSyncService {
             } catch (err) {
               console.warn('[Sync] Bazaar income insert error:', err.message);
             }
+          }
+        }
+
+        // F2. Company & Job Wages (Log 6221, 6220, or paycheck)
+        const isCompanyPay = Number(entry.log) === 6221 || 
+                             Number(entry.log) === 6220 || 
+                             (title.includes('company') && (title.includes('pay') || title.includes('wage') || title.includes('salary')));
+        const payAmount = Number(data.pay || data.money || data.salary || 0);
+        if (isCompanyPay && payAmount > 0) {
+          const desc = `Company Paycheck: $${payAmount.toLocaleString()}`;
+          try {
+            const [incRes] = await pool.query(
+              `INSERT IGNORE INTO income_ledger 
+               (torn_log_id, category, amount, description, metadata_json, logged_at)
+               VALUES (?, 'company_pay', ?, ?, ?, ?)`,
+              [logId, payAmount, desc, JSON.stringify(data), logDate]
+            );
+            if (incRes.affectedRows > 0) importedIncomes++;
+          } catch (err) {
+            console.warn('[Sync] Company pay insert error:', err.message);
           }
         }
 

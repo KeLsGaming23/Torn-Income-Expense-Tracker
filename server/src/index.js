@@ -568,13 +568,19 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     const activeLeftoverUnits = Number(invRows[0]?.total_units || 0);
     const activeLeftoverValue = Number(invRows[0]?.total_cost_basis || 0);
 
-    // 3. Monthly Income & Net Profit
-    const [incRows] = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0) AS total_income
+    // 3. Monthly Income & Unified Net Profit
+    const [incCategoryRows] = await pool.query(
+      `SELECT category, COALESCE(SUM(amount), 0) AS total
        FROM income_ledger 
-       WHERE logged_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
+       WHERE logged_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+       GROUP BY category`
     );
-    const monthlyTotalIncome = Number(incRows[0]?.total_income || 0);
+    const catMap = {};
+    let monthlyTotalIncome = 0;
+    incCategoryRows.forEach(r => {
+      catMap[r.category] = Number(r.total || 0);
+      monthlyTotalIncome += Number(r.total || 0);
+    });
 
     const [profitRows] = await pool.query(
       `SELECT COALESCE(SUM(net_profit), 0) AS total_profit,
@@ -582,7 +588,17 @@ app.get('/api/dashboard/command-center', async (req, res) => {
        FROM point_conversions 
        WHERE converted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
     );
-    const monthlyNetProfit = Number(profitRows[0]?.total_profit || 0);
+    const pointsProfit = Number(profitRows[0]?.total_profit || 0);
+
+    // Consolidated Net Profit across all streams
+    const crimesProfit = Number(catMap['crimes'] || 0);
+    const bankProfit = Number(catMap['bank_interest'] || 0);
+    const companyProfit = Number(catMap['company_pay'] || 0);
+    const muggingProfit = Number(catMap['mugging_gain'] || 0);
+    const bazaarRevenue = Number(catMap['bazaar_sale'] || 0);
+
+    // Net Profit: Points net profit + pure cash inflows (crimes, bank, company, mugging) + bazaar revenue
+    const monthlyNetProfit = pointsProfit + crimesProfit + bankProfit + companyProfit + muggingProfit + bazaarRevenue;
 
     // 4. Total Monthly Operational Expenses (Rent, Upkeep, Travel)
     const [expRows] = await pool.query(
