@@ -132,6 +132,8 @@ export default function IncomeLedger() {
   // Stats calculation
   const total30d = incomeData?.totalIncome30d || 0;
   const breakdown = incomeData?.breakdown || [];
+  const totalSum = incomeData?.totalIncome || breakdown.reduce((acc, b) => acc + Number(b.amount || 0), 0);
+  const totalCount = breakdown.reduce((acc, b) => acc + Number(b.count || 0), 0);
   
   const tradesTotal = breakdown.find(b => b.category === 'trade_income')?.amount || 0;
   const pointsTotal = breakdown.find(b => b.category === 'points_sale')?.amount || 0;
@@ -214,18 +216,45 @@ export default function IncomeLedger() {
         </div>
       </div>
 
-      {/* CHARTS & REVENUE BREAKDOWN */}
+      {/* CHARTS & INTERACTIVE STREAM FILTER */}
       {chartData.length > 0 && (
         <div className="glass-panel rounded-3xl p-6 border border-slate-800">
-          <div className="flex items-center gap-2.5 mb-4">
-            <PieChartIcon className="h-5 w-5 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              Income Stream Distribution
-            </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2.5">
+              <PieChartIcon className="h-5 w-5 text-emerald-400" />
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Income Stream Distribution
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  {selectedCategory === 'all' 
+                    ? 'Click any stream below or pie slice to filter transactions' 
+                    : `Filtered by: ${CATEGORY_LABELS[selectedCategory] || selectedCategory} • Click to reset`}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick All Streams Reset Pill */}
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 self-start sm:self-auto ${
+                selectedCategory === 'all'
+                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-950/40'
+                  : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <span>All Streams</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                selectedCategory === 'all' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {totalCount}
+              </span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-6">
-            <div className="h-56 w-full">
+            {/* Donut Chart */}
+            <div className="h-56 w-full flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -236,90 +265,123 @@ export default function IncomeLedger() {
                     outerRadius={80}
                     paddingAngle={4}
                     dataKey="value"
+                    cursor="pointer"
+                    onClick={(entry) => {
+                      if (entry && entry.categoryKey) {
+                        setSelectedCategory(selectedCategory === entry.categoryKey ? 'all' : entry.categoryKey);
+                      }
+                    }}
                   >
-                    {chartData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={INCOME_COLORS[entry.categoryKey] || '#64748b'} 
-                      />
-                    ))}
+                    {chartData.map((entry, index) => {
+                      const isSelected = selectedCategory === entry.categoryKey;
+                      const isFaded = selectedCategory !== 'all' && !isSelected;
+                      return (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={INCOME_COLORS[entry.categoryKey] || '#64748b'} 
+                          opacity={isFaded ? 0.35 : 1}
+                          stroke={isSelected ? '#ffffff' : 'none'}
+                          strokeWidth={isSelected ? 2 : 0}
+                        />
+                      );
+                    })}
                   </Pie>
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: '#0f172a', 
-                      borderColor: '#334155', 
-                      borderRadius: '1rem',
-                      color: '#f8fafc',
-                      fontSize: '12px'
-                    }} 
-                    formatter={(val) => `$${Number(val).toLocaleString()}`}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+                    backgroundColor: '#0f172a', 
+                    borderColor: '#334155', 
+                    borderRadius: '1rem',
+                    color: '#f8fafc',
+                    fontSize: '12px'
+                  }} 
+                  formatter={(val) => `$${Number(val).toLocaleString()}`}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
 
-            {/* Category Pills List */}
+            {/* Interactive Stream Cards (No Overflow, Active Only) */}
             <div className="space-y-2">
-              {breakdown.map((item) => (
-                <div 
-                  key={item.category} 
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs"
-                >
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: INCOME_COLORS[item.category] || '#64748b' }} 
-                    />
-                    <span className="font-medium text-slate-200">
-                      {CATEGORY_LABELS[item.category] || item.category}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      ({item.count} {item.count === 1 ? 'entry' : 'entries'})
-                    </span>
-                  </div>
-                  <span className="font-mono font-bold text-emerald-400">
-                    +${Number(item.amount).toLocaleString()}
-                  </span>
-                </div>
-              ))}
+              {breakdown.map((item) => {
+                const isSelected = selectedCategory === item.category;
+                const color = INCOME_COLORS[item.category] || '#64748b';
+                const pct = totalSum > 0 ? ((Number(item.amount) / totalSum) * 100).toFixed(1) : 0;
+
+                return (
+                  <button 
+                    key={item.category}
+                    type="button"
+                    onClick={() => setSelectedCategory(isSelected ? 'all' : item.category)}
+                    className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs transition-all text-left group ${
+                      isSelected 
+                        ? 'bg-slate-800/95 border-2 shadow-lg' 
+                        : 'bg-slate-900/60 hover:bg-slate-800/50 border border-slate-800/80 hover:border-slate-700'
+                    }`}
+                    style={{
+                      borderColor: isSelected ? color : undefined,
+                      boxShadow: isSelected ? `0 4px 20px -2px ${color}33` : undefined
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div 
+                        className={`w-3.5 h-3.5 rounded-full transition-transform ${isSelected ? 'scale-125' : 'group-hover:scale-110'}`} 
+                        style={{ backgroundColor: color }} 
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`font-bold transition-colors ${isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                            {CATEGORY_LABELS[item.category] || item.category}
+                          </span>
+                          {isSelected && (
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                              Active Filter
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {item.count} {item.count === 1 ? 'transaction' : 'transactions'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-mono font-bold text-emerald-400 text-xs sm:text-sm">
+                        +${Number(item.amount).toLocaleString()}
+                      </div>
+                      <span className="text-[10px] text-slate-500">
+                        {pct}% of income
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {/* FILTER BUTTONS */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 text-xs scrollbar-none">
-        <button
-          onClick={() => setSelectedCategory('all')}
-          className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-            selectedCategory === 'all' 
-              ? 'bg-emerald-500 text-white shadow-md shadow-emerald-950/40' 
-              : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          All Streams
-        </button>
-
-        {Object.keys(CATEGORY_LABELS).map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 ${
-              selectedCategory === cat 
-                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-950/40' 
-                : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            {CATEGORY_LABELS[cat]}
-          </button>
-        ))}
-      </div>
-
       {/* TRANSACTIONS TABLE */}
       <div className="glass-panel rounded-3xl border border-slate-800 overflow-hidden">
-        <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-            Realized Inflow Transactions ({incomeData?.incomes?.length || 0})
+        <div className="p-4 border-b border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Realized Inflow Transactions ({incomeData?.incomes?.length || 0})
+            </span>
+            {selectedCategory !== 'all' && (
+              <span className="text-[11px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
+                <span>Filtered: {CATEGORY_LABELS[selectedCategory] || selectedCategory}</span>
+                <button 
+                  onClick={() => setSelectedCategory('all')} 
+                  className="text-slate-400 hover:text-white font-bold ml-1"
+                  title="Clear filter"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] text-slate-500 font-mono">
+            Sorted by latest logged date
           </span>
         </div>
 
