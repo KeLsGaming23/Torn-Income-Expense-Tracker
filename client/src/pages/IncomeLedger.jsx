@@ -46,8 +46,7 @@ const CATEGORY_LABELS = {
   mugging_gain: 'Mugging Cash',
   bank_interest: 'City Bank Interest',
   company_pay: 'Company Paycheck',
-  faction_payout: 'Faction Payout',
-  manual: 'Manual Entry'
+  faction_payout: 'Faction Payout'
 };
 
 export default function IncomeLedger() {
@@ -166,51 +165,6 @@ export default function IncomeLedger() {
           <Plus className="h-4 w-4" />
           <span>Log Income</span>
         </button>
-      </div>
-
-      {/* QUICK PRESETS STRIP */}
-      <div className="glass-panel rounded-3xl p-5 border border-slate-800 space-y-3">
-        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
-          Quick Log Inflow Presets
-        </span>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <button
-            onClick={() => handleQuickLog('trade_income', '', 'Player Item Trade')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
-          >
-            <ArrowLeftRight className="h-5 w-5 text-sky-400 mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-white">Player Trade</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Cash Inflow</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickLog('crimes', '', 'Crimes 2.0 Payout')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
-          >
-            <Target className="h-5 w-5 text-purple-400 mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-white">Crime Gain</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Cash Reward</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickLog('bazaar_sale', '', 'Bazaar Customer Buy')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
-          >
-            <Store className="h-5 w-5 text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-white">Bazaar Sale</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Item Purchase</span>
-          </button>
-
-          <button
-            onClick={() => handleQuickLog('points_sale', '', 'Points Market Cashout')}
-            className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition-all text-center group"
-          >
-            <Coins className="h-5 w-5 text-emerald-400 mb-1 group-hover:scale-110 transition-transform" />
-            <span className="text-xs font-bold text-white">Points Sale</span>
-            <span className="text-[10px] text-slate-400 font-mono mt-0.5">Market Sell</span>
-          </button>
-        </div>
       </div>
 
       {/* KPI STAT CARDS */}
