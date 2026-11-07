@@ -136,7 +136,7 @@ async function initSchema(connection) {
     // Ensure inventory_lots supports all item types and new sources
     try {
       await connection.query(`ALTER TABLE inventory_lots MODIFY COLUMN item_type VARCHAR(40) NOT NULL`);
-      await connection.query(`ALTER TABLE inventory_lots MODIFY COLUMN source ENUM('abroad', 'bazaar', 'market', 'trade', 'crime', 'legacy', 'manual') NOT NULL`);
+      await connection.query(`ALTER TABLE inventory_lots MODIFY COLUMN source VARCHAR(32) NOT NULL DEFAULT 'legacy'`);
     } catch (lotErr) {
       // Ignore if already modified
     }

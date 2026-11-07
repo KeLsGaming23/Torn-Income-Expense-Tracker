@@ -595,10 +595,11 @@ app.get('/api/dashboard/command-center', async (req, res) => {
     const bankProfit = Number(catMap['bank_interest'] || 0);
     const companyProfit = Number(catMap['company_pay'] || 0);
     const muggingProfit = Number(catMap['mugging_gain'] || 0);
+    const factionProfit = Number(catMap['faction_payout'] || 0);
     const bazaarRevenue = Number(catMap['bazaar_sale'] || 0);
 
-    // Net Profit: Points net profit + pure cash inflows (crimes, bank, company, mugging) + bazaar revenue
-    const monthlyNetProfit = pointsProfit + crimesProfit + bankProfit + companyProfit + muggingProfit + bazaarRevenue;
+    // Net Profit: Points net profit + pure cash inflows (crimes, bank, company, mugging, faction) + bazaar revenue
+    const monthlyNetProfit = pointsProfit + crimesProfit + bankProfit + companyProfit + muggingProfit + factionProfit + bazaarRevenue;
 
     // 4. Total Monthly Operational Expenses (Rent, Upkeep, Travel)
     const [expRows] = await pool.query(

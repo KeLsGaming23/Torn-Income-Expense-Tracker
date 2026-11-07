@@ -134,12 +134,20 @@ export class TornSyncService {
     const [stateRows] = await pool.query(`SELECT last_log_timestamp FROM sync_state WHERE id = 1`);
     const lastTimestamp = stateRows[0]?.last_log_timestamp ? Number(stateRows[0].last_log_timestamp) : 0;
 
-    // Auto-detect if database needs an initial 35-day historical backfill for crimes and bazaar sales
+    // Auto-detect if database needs an initial 35-day historical backfill for crimes, bazaar sales, item lots, or cash transfers
     const [incomeCount] = await pool.query(
       `SELECT COUNT(*) as count FROM income_ledger WHERE category IN ('crimes', 'bazaar_sale')`
     );
+    const [lootLotsCount] = await pool.query(
+      `SELECT COUNT(*) as count FROM inventory_lots WHERE source IN ('crime', 'city_find', 'dump', 'shop')`
+    );
+    const [transferCount] = await pool.query(
+      `SELECT COUNT(*) as count FROM income_ledger WHERE description LIKE 'Cash Transfer%' OR category = 'faction_payout'`
+    );
     const needsBackfill = Number(incomeCount[0]?.count || 0) === 0;
-    const isDeepSync = options.deepSync || lastTimestamp === 0 || needsBackfill;
+    const needsLotsBackfill = Number(lootLotsCount[0]?.count || 0) === 0;
+    const needsTransferBackfill = Number(transferCount[0]?.count || 0) === 0;
+    const isDeepSync = options.deepSync || lastTimestamp === 0 || needsBackfill || needsLotsBackfill || needsTransferBackfill;
 
     let importedLots = 0;
     let importedExpenses = 0;
@@ -248,8 +256,9 @@ export class TornSyncService {
         const data = entry.data || {};
         const logDate = new Date(ts * 1000);
 
-        // A. Purchases of Plushies & Flowers
-        const isPurchase = title.includes('buy') || title.includes('abroad') || title.includes('bazaar') || title.includes('market');
+        // A. Purchases of All Items (Abroad, Bazaar, Market, City Shops)
+        const isPurchase = title.includes('buy') || title.includes('abroad') || title.includes('bazaar') || title.includes('market') || 
+                           Number(entry.log) === 4200 || Number(entry.log) === 4201 || Number(entry.log) === 1225 || Number(entry.log) === 1100;
         if (isPurchase) {
           const itemsList = data.items && Array.isArray(data.items) && data.items.length > 0
             ? data.items.map(it => ({
@@ -264,12 +273,28 @@ export class TornSyncService {
               }] : []);
 
           for (const itemEntry of itemsList) {
-            const museumItem = ALL_MUSEUM_ITEMS_MAP.get(itemEntry.id);
-            if (museumItem) {
-              const qty = itemEntry.qty;
-              const unitCost = itemEntry.unitCost || museumItem.buyPrice;
-              const source = title.includes('abroad') || data.area ? 'abroad' : title.includes('bazaar') ? 'bazaar' : 'market';
+            let itemInfo = ALL_MUSEUM_ITEMS_MAP.get(itemEntry.id);
+            if (!itemInfo) {
+              try {
+                const [cRow] = await pool.query('SELECT item_id, name, item_type, buy_price FROM master_items_cache WHERE item_id = ?', [itemEntry.id]);
+                if (cRow[0]) {
+                  itemInfo = { id: cRow[0].item_id, name: cRow[0].name, type: cRow[0].item_type, buyPrice: Number(cRow[0].buy_price || 0) };
+                }
+              } catch (e) {}
+            }
 
+            if (itemInfo) {
+              const qty = itemEntry.qty;
+              const unitCost = itemEntry.unitCost !== undefined && itemEntry.unitCost > 0 ? itemEntry.unitCost : (itemInfo.buyPrice || 0);
+              const source = (title.includes('abroad') || data.area || Number(entry.log) === 4201) 
+                ? 'abroad' 
+                : (title.includes('bazaar') || Number(entry.log) === 1225) 
+                ? 'bazaar' 
+                : (Number(entry.log) === 4200 || title.includes('shop buy'))
+                ? 'shop'
+                : 'market';
+
+              const lotKey = `${logId}_${itemEntry.id}`;
               try {
                 const [insertRes] = await pool.query(
                   `INSERT INTO inventory_lots 
@@ -278,12 +303,78 @@ export class TornSyncService {
                    ON DUPLICATE KEY UPDATE 
                      qty_initial = VALUES(qty_initial),
                      qty_remaining = GREATEST(0, VALUES(qty_initial) - (qty_initial - qty_remaining)),
-                     unit_cost = VALUES(unit_cost)`,
-                  [logId, museumItem.id, museumItem.name, museumItem.type, source, qty, qty, unitCost, logDate]
+                     unit_cost = VALUES(unit_cost),
+                     source = VALUES(source)`,
+                  [lotKey, itemInfo.id, itemInfo.name, itemInfo.type, source, qty, qty, unitCost, logDate]
                 );
                 if (insertRes.affectedRows > 0) importedLots++;
               } catch (err) {
                 console.warn('[Sync] Error inserting lot:', err.message);
+              }
+            }
+          }
+        }
+
+        // A2. Item Acquisitions Without Purchase (Crime Loot, Dump Finds, City Finds, Specials, Gifts)
+        const isCrimeItem = Number(entry.log) === 9020 || (title.includes('crime') && (data.items_gained || title.includes('item gain')));
+        const isCityFind = Number(entry.log) === 7011 || title.includes('city item find');
+        const isDumpFind = Number(entry.log) === 1404 || title.includes('dump find');
+        const isCompanySpecialItem = Number(entry.log) === 6505 || title.includes('company special gain item');
+        const isItemReceive = Number(entry.log) === 4101 || (title.includes('item') && title.includes('receive'));
+
+        if (isCrimeItem || isCityFind || isDumpFind || isCompanySpecialItem || isItemReceive) {
+          const lootItems = [];
+
+          if (data.items_gained && typeof data.items_gained === 'object') {
+            for (const [k, v] of Object.entries(data.items_gained)) {
+              lootItems.push({ id: Number(k), qty: Number(v || 1) });
+            }
+          } else if (Array.isArray(data.item)) {
+            data.item.forEach(it => lootItems.push({ id: Number(it.id || it), qty: Number(it.qty || 1) }));
+          } else if (data.item && typeof data.item === 'object') {
+            for (const [k, v] of Object.entries(data.item)) {
+              lootItems.push({ id: Number(k), qty: Number(v || 1) });
+            }
+          } else if (data.item || data.item_id) {
+            lootItems.push({ id: Number(data.item || data.item_id), qty: Number(data.quantity || 1) });
+          } else if (Array.isArray(data.items)) {
+            data.items.forEach(it => lootItems.push({ id: Number(it.id || it), qty: Number(it.qty || 1) }));
+          }
+
+          let source = 'crime';
+          if (isCityFind) source = 'city_find';
+          else if (isDumpFind) source = 'dump';
+          else if (isCompanySpecialItem) source = 'special';
+          else if (isItemReceive) source = 'receive';
+
+          for (const loot of lootItems) {
+            let itemInfo = ALL_MUSEUM_ITEMS_MAP.get(loot.id);
+            if (!itemInfo) {
+              try {
+                const [cRow] = await pool.query('SELECT item_id, name, item_type FROM master_items_cache WHERE item_id = ?', [loot.id]);
+                if (cRow[0]) {
+                  itemInfo = { id: cRow[0].item_id, name: cRow[0].name, type: cRow[0].item_type };
+                }
+              } catch (e) {}
+            }
+
+            if (itemInfo) {
+              const lotKey = `${logId}_${loot.id}`;
+              try {
+                const [insertRes] = await pool.query(
+                  `INSERT INTO inventory_lots 
+                   (torn_log_id, item_id, item_name, item_type, source, qty_initial, qty_remaining, unit_cost, purchased_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                   ON DUPLICATE KEY UPDATE 
+                     qty_initial = VALUES(qty_initial),
+                     qty_remaining = GREATEST(0, VALUES(qty_initial) - (qty_initial - qty_remaining)),
+                     source = VALUES(source),
+                     unit_cost = 0`,
+                  [lotKey, itemInfo.id, itemInfo.name, itemInfo.type, source, loot.qty, loot.qty, logDate]
+                );
+                if (insertRes.affectedRows > 0) importedLots++;
+              } catch (err) {
+                console.warn('[Sync] Error inserting loot lot:', err.message);
               }
             }
           }
@@ -376,23 +467,21 @@ export class TornSyncService {
           const items = data.items || (data.item ? [{ id: data.item, qty: data.quantity || 1 }] : []);
           for (const item of items) {
             const itemId = Number(item.id);
-            if (ALL_MUSEUM_ITEMS_MAP.has(itemId)) {
-              let needed = Number(item.qty || 1);
-              const [lots] = await pool.query(
-                `SELECT id, qty_remaining FROM inventory_lots 
-                 WHERE item_id = ? AND qty_remaining > 0 
-                 ORDER BY purchased_at ASC, id ASC`,
-                [itemId]
+            let needed = Number(item.qty || 1);
+            const [lots] = await pool.query(
+              `SELECT id, qty_remaining FROM inventory_lots 
+               WHERE item_id = ? AND qty_remaining > 0 
+               ORDER BY purchased_at ASC, id ASC`,
+              [itemId]
+            );
+            for (const lot of lots) {
+              if (needed <= 0) break;
+              const take = Math.min(lot.qty_remaining, needed);
+              await pool.query(
+                `UPDATE inventory_lots SET qty_remaining = qty_remaining - ? WHERE id = ?`,
+                [take, lot.id]
               );
-              for (const lot of lots) {
-                if (needed <= 0) break;
-                const take = Math.min(lot.qty_remaining, needed);
-                await pool.query(
-                  `UPDATE inventory_lots SET qty_remaining = qty_remaining - ? WHERE id = ?`,
-                  [take, lot.id]
-                );
-                needed -= take;
-              }
+              needed -= take;
             }
           }
         }
@@ -569,6 +658,51 @@ export class TornSyncService {
               if (incRes.affectedRows > 0) importedIncomes++;
             } catch (err) {
               console.warn('[Sync] Trade income insert error:', err.message);
+            }
+          }
+        }
+
+        // G2. Received Cash Transfers from Players (Log 4810)
+        const isMoneyReceive = Number(entry.log) === 4810 || (title.includes('money') && title.includes('receive') && !title.includes('mug') && data.money > 0);
+        if (isMoneyReceive) {
+          const cashAmount = Number(data.money || 0);
+          if (cashAmount > 0) {
+            const sender = data.anonymous ? 'Anonymous' : (data.sender ? `Player #${data.sender}` : 'Player');
+            const msg = data.message ? ` ("${data.message}")` : '';
+            const desc = `Cash Transfer: Received $${cashAmount.toLocaleString()} from ${sender}${msg}`;
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'trade_income', ?, ?, ?, ?)`,
+                [logId, cashAmount, desc, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Money receive insert error:', err.message);
+            }
+          }
+        }
+
+        // G3. Faction Cash Payouts & Money Given (Log 6736 & 6795)
+        const isFactionMoneyReceive = Number(entry.log) === 6736 || 
+                                     Number(entry.log) === 6795 || 
+                                     (title.includes('faction') && (title.includes('give money receive') || title.includes('payout money balance receive')));
+        if (isFactionMoneyReceive) {
+          const payoutAmt = Number(data.balance_change || data.money_given || data.money || 0);
+          if (payoutAmt > 0) {
+            const roleOrScenario = data.scenario ? `${data.scenario} (${data.role || 'Member'})` : 'Faction Cash Vault';
+            const desc = `Faction Payout: $${payoutAmt.toLocaleString()} from ${roleOrScenario}`;
+            try {
+              const [incRes] = await pool.query(
+                `INSERT IGNORE INTO income_ledger 
+                 (torn_log_id, category, amount, description, metadata_json, logged_at)
+                 VALUES (?, 'faction_payout', ?, ?, ?, ?)`,
+                [logId, payoutAmt, desc, JSON.stringify(data), logDate]
+              );
+              if (incRes.affectedRows > 0) importedIncomes++;
+            } catch (err) {
+              console.warn('[Sync] Faction payout insert error:', err.message);
             }
           }
         }

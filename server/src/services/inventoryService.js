@@ -148,13 +148,15 @@ export class InventoryService {
           if (take <= 0) continue;
 
           const purchaseDate = new Date(lot.purchased_at);
-          const isFree = purchaseDate < cutoffDate || lot.source === 'legacy' || lot.source === 'crime';
+          const isLootOrFree = lot.source === 'crime' || lot.source === 'city_find' || lot.source === 'dump' || lot.source === 'special' || lot.source === 'receive';
+          const isPreOct1 = purchaseDate < cutoffDate || lot.source === 'legacy';
+          const isFree = isLootOrFree || isPreOct1;
           const lotUnitCost = isFree ? 0 : Number(lot.unit_cost || 0);
 
           totalItemCost += take * lotUnitCost;
           accountedQty += take;
 
-          const srcType = isFree ? (lot.source === 'crime' ? 'crime' : 'legacy') : lot.source;
+          const srcType = isPreOct1 ? 'legacy' : lot.source;
           distinctSources.add(srcType);
           lotBreakdown.push({
             qty: take,
@@ -187,6 +189,21 @@ export class InventoryService {
       if (distinctSources.size > 1) {
         originSource = 'mixed';
         originBadge = 'Multi-Source (Blended)';
+      } else if (distinctSources.has('crime')) {
+        originSource = 'crime';
+        originBadge = 'Crimes 2.0 Loot';
+      } else if (distinctSources.has('city_find')) {
+        originSource = 'city_find';
+        originBadge = 'City Find ($0)';
+      } else if (distinctSources.has('dump')) {
+        originSource = 'dump';
+        originBadge = 'Dump Find ($0)';
+      } else if (distinctSources.has('special')) {
+        originSource = 'special';
+        originBadge = 'Company Special';
+      } else if (distinctSources.has('shop')) {
+        originSource = 'shop';
+        originBadge = 'Torn City Shop';
       } else if (distinctSources.has('abroad')) {
         originSource = 'abroad';
         originBadge = 'Travel Abroad';
@@ -196,9 +213,9 @@ export class InventoryService {
       } else if (distinctSources.has('bazaar')) {
         originSource = 'bazaar';
         originBadge = 'Player Bazaar';
-      } else if (distinctSources.has('crime')) {
-        originSource = 'crime';
-        originBadge = 'Crimes 2.0 Loot';
+      } else if (distinctSources.has('receive')) {
+        originSource = 'receive';
+        originBadge = 'Player Gift / Received';
       } else if (distinctSources.has('market')) {
         originSource = 'market';
         originBadge = 'Item Market';
